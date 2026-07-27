@@ -1,0 +1,129 @@
+import { app } from "../../scripts/app.js";
+import {
+  getActiveLorasFromNode,
+  updateConnectedTriggerWords,
+  chainCallback,
+  mergeLoras,
+  getWidgetByName,
+  getWidgetSerializedValue,
+} from "./utils.js";
+import { addLorasWidget } from "./loras_widget.js";
+import { applyLoraValuesToText, debounce } from "./lora_syntax_utils.js";
+
+app.registerExtension({
+  name: "LoraManager.WanVideoLoraSelect",
+
+  async beforeRegisterNodeDef(nodeType, nodeData, app) {
+    if (nodeType.comfyClass === "WanVideo Lora Select (LoraManager)") {
+      chainCallback(nodeType.prototype, "onNodeCreated", async function () {
+        // Enable widget serialization
+        this.serialize_widgets = true;
+
+        // Add optional inputs
+        this.addInput("prev_lora", "WANVIDLORA", {
+          shape: 7, // 7 is the shape of the optional input
+        });
+
+        this.addInput("blocks", "SELECTEDBLOCKS", {
+          shape: 7, // 7 is the shape of the optional input
+        });
+
+        // Add flags to prevent callback loops
+        let isUpdating = false;
+        let isSyncingInput = false;
+
+        // Get the text input widget (AUTOCOMPLETE_TEXT_LORAS type, at index 2 after low_mem_load and merge_loras)
+        const inputWidget = getWidgetByName(this, "text");
+        if (!inputWidget) {
+          console.warn("LoRA Manager: text widget not found for WanVideo Lora Select");
+          return;
+        }
+        this.inputWidget = inputWidget;
+
+        const scheduleInputSync = debounce((lorasValue) => {
+          if (isSyncingInput) {
+            return;
+          }
+
+          isSyncingInput = true;
+          isUpdating = true;
+
+          try {
+            const nextText = applyLoraValuesToText(
+              inputWidget.value,
+              lorasValue
+            );
+
+            if (inputWidget.value !== nextText) {
+              inputWidget.value = nextText;
+            }
+          } finally {
+            isUpdating = false;
+            isSyncingInput = false;
+          }
+        });
+
+        const result = addLorasWidget(this, "loras", {}, (value) => {
+          // Prevent recursive calls
+          if (isUpdating) return;
+          isUpdating = true;
+
+          try {
+            // Update this node's direct trigger toggles with its own active loras
+            const activeLoraNames = new Set();
+            value.forEach((lora) => {
+              if (lora.active) {
+                activeLoraNames.add(lora.name);
+              }
+            });
+            updateConnectedTriggerWords(this, activeLoraNames);
+          } finally {
+            isUpdating = false;
+          }
+
+          scheduleInputSync(value);
+        });
+
+        this.lorasWidget = result.widget;
+
+        // Set up callback for the text input widget to trigger merge logic
+        inputWidget.callback = (value) => {
+          if (isUpdating) return;
+          isUpdating = true;
+
+          try {
+            const currentLoras = this.lorasWidget?.value || [];
+            const mergedLoras = mergeLoras(value, currentLoras);
+            if (this.lorasWidget) {
+              this.lorasWidget.value = mergedLoras;
+            }
+            // Update this node's direct trigger toggles with its own active loras
+            const activeLoraNames = getActiveLorasFromNode(this);
+            updateConnectedTriggerWords(this, activeLoraNames);
+          } finally {
+            isUpdating = false;
+          }
+        };
+      });
+    }
+  },
+
+  async loadedGraphNode(node) {
+    if (node.comfyClass == "WanVideo Lora Select (LoraManager)") {
+      // Restore saved value if exists
+      let existingLoras = [];
+      if (node.widgets_values && node.widgets_values.length > 0) {
+        const savedValue = getWidgetSerializedValue(node, "loras");
+        existingLoras = savedValue || [];
+      }
+      // Merge the loras data
+      const inputWidget = node.inputWidget || getWidgetByName(node, "text");
+      if (!inputWidget) {
+        console.warn("LoRA Manager: text widget not found while restoring WanVideo Lora Select");
+        return;
+      }
+      const mergedLoras = mergeLoras(inputWidget.value, existingLoras);
+      node.lorasWidget.value = mergedLoras;
+    }
+  },
+});

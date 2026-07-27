@@ -1,0 +1,118 @@
+"""Route registrar for recipe endpoints."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Mapping
+
+from aiohttp import web
+
+
+@dataclass(frozen=True)
+class RouteDefinition:
+    """Declarative definition for a recipe HTTP route."""
+
+    method: str
+    path: str
+    handler_name: str
+
+
+ROUTE_DEFINITIONS: tuple[RouteDefinition, ...] = (
+    RouteDefinition("GET", "/loras/recipes", "render_page"),
+    RouteDefinition("GET", "/api/lm/recipes", "list_recipes"),
+    RouteDefinition("GET", "/api/lm/recipe/{recipe_id}", "get_recipe"),
+    RouteDefinition(
+        "POST", "/api/lm/recipe/{recipe_id}/ai-prompt-draft", "create_ai_prompt_draft"
+    ),
+    RouteDefinition("GET", "/api/lm/recipe/{recipe_id}/revisions", "list_recipe_revisions"),
+    RouteDefinition("POST", "/api/lm/recipe/{recipe_id}/revisions", "adopt_recipe_revision"),
+    RouteDefinition(
+        "PUT", "/api/lm/recipe/{recipe_id}/revisions/active", "activate_recipe_revision"
+    ),
+    RouteDefinition("GET", "/api/lm/recipes/import-remote", "import_remote_recipe"),
+    RouteDefinition("POST", "/api/lm/recipes/analyze-image", "analyze_uploaded_image"),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/analyze-local-image", "analyze_local_image"
+    ),
+    RouteDefinition("POST", "/api/lm/recipes/save", "save_recipe"),
+    RouteDefinition("DELETE", "/api/lm/recipe/{recipe_id}", "delete_recipe"),
+    RouteDefinition("GET", "/api/lm/recipes/top-tags", "get_top_tags"),
+    RouteDefinition("GET", "/api/lm/recipes/base-models", "get_base_models"),
+    RouteDefinition("GET", "/api/lm/recipes/roots", "get_roots"),
+    RouteDefinition("GET", "/api/lm/recipes/folders", "get_folders"),
+    RouteDefinition("GET", "/api/lm/recipes/folder-tree", "get_folder_tree"),
+    RouteDefinition(
+        "GET", "/api/lm/recipes/unified-folder-tree", "get_unified_folder_tree"
+    ),
+    RouteDefinition("GET", "/api/lm/recipe/{recipe_id}/share", "share_recipe"),
+    RouteDefinition(
+        "GET", "/api/lm/recipe/{recipe_id}/share/download", "download_shared_recipe"
+    ),
+    RouteDefinition("GET", "/api/lm/recipe/{recipe_id}/syntax", "get_recipe_syntax"),
+    RouteDefinition("PUT", "/api/lm/recipe/{recipe_id}/update", "update_recipe"),
+    RouteDefinition("POST", "/api/lm/recipe/move", "move_recipe"),
+    RouteDefinition("POST", "/api/lm/recipes/move-bulk", "move_recipes_bulk"),
+    RouteDefinition("POST", "/api/lm/recipe/lora/reconnect", "reconnect_lora"),
+    RouteDefinition("GET", "/api/lm/recipes/find-duplicates", "find_duplicates"),
+    RouteDefinition("POST", "/api/lm/recipes/bulk-delete", "bulk_delete"),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/save-from-widget", "save_recipe_from_widget"
+    ),
+    RouteDefinition("GET", "/api/lm/recipes/for-lora", "get_recipes_for_lora"),
+    RouteDefinition(
+        "GET", "/api/lm/recipes/for-checkpoint", "get_recipes_for_checkpoint"
+    ),
+    RouteDefinition("GET", "/api/lm/recipes/scan", "scan_recipes"),
+    RouteDefinition("POST", "/api/lm/recipes/repair", "repair_recipes"),
+    RouteDefinition("POST", "/api/lm/recipes/cancel-repair", "cancel_repair"),
+    RouteDefinition("POST", "/api/lm/recipe/{recipe_id}/repair", "repair_recipe"),
+    RouteDefinition("POST", "/api/lm/recipes/repair-bulk", "repair_recipes_bulk"),
+    RouteDefinition("GET", "/api/lm/recipes/repair-progress", "get_repair_progress"),
+    RouteDefinition("POST", "/api/lm/recipes/batch-import/start", "start_batch_import"),
+    RouteDefinition(
+        "GET", "/api/lm/recipes/batch-import/progress", "get_batch_import_progress"
+    ),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/batch-import/cancel", "cancel_batch_import"
+    ),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/batch-import/directory", "start_directory_import"
+    ),
+    RouteDefinition("POST", "/api/lm/recipes/browse-directory", "browse_directory"),
+    RouteDefinition(
+        "GET", "/api/lm/recipes/check-image-exists", "check_image_exists"
+    ),
+    RouteDefinition("GET", "/api/lm/recipes/import-from-url", "import_from_url"),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/create-from-example", "create_from_example"
+    ),
+    RouteDefinition(
+        "POST", "/api/lm/recipe/{recipe_id}/reimport", "reimport_recipe"
+    ),
+)
+
+
+class RecipeRouteRegistrar:
+    """Bind declarative recipe definitions to an aiohttp router."""
+
+    _METHOD_MAP = {
+        "GET": "add_get",
+        "POST": "add_post",
+        "PUT": "add_put",
+        "DELETE": "add_delete",
+    }
+
+    def __init__(self, app: web.Application) -> None:
+        self._app = app
+
+    def register_routes(
+        self, handler_lookup: Mapping[str, Callable[[web.Request], object]]
+    ) -> None:
+        for definition in ROUTE_DEFINITIONS:
+            handler = handler_lookup[definition.handler_name]
+            self._bind_route(definition.method, definition.path, handler)
+
+    def _bind_route(self, method: str, path: str, handler: Callable) -> None:
+        add_method_name = self._METHOD_MAP[method.upper()]
+        add_method = getattr(self._app.router, add_method_name)
+        add_method(path, handler)

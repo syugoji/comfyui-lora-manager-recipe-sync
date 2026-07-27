@@ -1,0 +1,234 @@
+
+import hashlib
+import json
+import logging
+import os
+import struct
+from typing import Any
+
+from .constants import (
+    CARD_PREVIEW_WIDTH,
+    DEFAULT_HASH_CHUNK_SIZE_MB,
+    PREVIEW_EXTENSIONS,
+)
+from .exif_utils import ExifUtils
+from ..services.settings_manager import get_settings_manager
+
+logger = logging.getLogger(__name__)
+
+MAX_SAFETENSORS_HEADER_BYTES = 100 * 1024 * 1024
+
+
+def is_valid_safetensors_file(file_path: str) -> bool:
+    """Validate the safetensors container without loading tensor payloads."""
+    try:
+        file_size = os.path.getsize(file_path)
+        if file_size < 10:
+            return False
+        with open(file_path, "rb") as f:
+            raw_length = f.read(8)
+            if len(raw_length) != 8:
+                return False
+            header_length = struct.unpack("<Q", raw_length)[0]
+            if header_length < 2 or header_length > MAX_SAFETENSORS_HEADER_BYTES:
+                return False
+            if header_length > file_size - 8:
+                return False
+            header = json.loads(f.read(header_length).decode("utf-8"))
+        if not isinstance(header, dict):
+            return False
+
+        payload_size = file_size - 8 - header_length
+        tensor_count = 0
+        for name, descriptor in header.items():
+            if name == "__metadata__":
+                if not isinstance(descriptor, dict):
+                    return False
+                continue
+            tensor_count += 1
+            if not isinstance(descriptor, dict):
+                return False
+            offsets = descriptor.get("data_offsets")
+            if (
+                not isinstance(offsets, list)
+                or len(offsets) != 2
+                or not all(isinstance(offset, int) for offset in offsets)
+                or offsets[0] < 0
+                or offsets[0] > offsets[1]
+                or offsets[1] > payload_size
+            ):
+                return False
+        return tensor_count > 0
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, struct.error, MemoryError):
+        return False
+
+
+def _get_hash_chunk_size_bytes() -> int:
+    """Return the chunk size used for hashing, in bytes."""
+
+    settings_manager = get_settings_manager()
+    chunk_size_mb = settings_manager.get("hash_chunk_size_mb", DEFAULT_HASH_CHUNK_SIZE_MB)
+    try:
+        chunk_size_value = float(chunk_size_mb)
+    except (TypeError, ValueError):
+        chunk_size_value = float(DEFAULT_HASH_CHUNK_SIZE_MB)
+
+    if chunk_size_value <= 0:
+        chunk_size_value = float(DEFAULT_HASH_CHUNK_SIZE_MB)
+
+    return max(1, int(chunk_size_value * 1024 * 1024))
+
+
+async def calculate_sha256(file_path: str) -> str:
+    """Calculate SHA256 hash of a file (full file content).
+
+    Uses ``posix_fadvise`` with ``POSIX_FADV_DONTNEED`` to avoid polluting the OS page
+    cache — critical on WSL where cached file pages live inside the VM and are not
+    accounted for in guest ``used`` memory, causing VmmemWSL to balloon.
+
+    On Windows/macOS where ``posix_fadvise`` is not available the hint is silently
+    skipped.
+    """
+    sha256_hash = hashlib.sha256()
+    chunk_size = _get_hash_chunk_size_bytes()
+    with open(file_path, "rb") as f:
+        fd = f.fileno()
+        for byte_block in iter(lambda: f.read(chunk_size), b""):
+            sha256_hash.update(byte_block)
+        # Evict pages after reading so the data doesn't linger in the kernel page
+        # cache — on WSL this otherwise appears as unreclaimable VmmemWSL growth.
+        # Guard against platforms (Windows, macOS) that lack posix_fadvise.
+        if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    return sha256_hash.hexdigest()
+
+
+def calculate_autov2(file_path: str) -> str:
+    """Calculate CivitAI AutoV2 hash.
+
+    AutoV2 is the first 10 characters of the full file SHA256.
+    Used by CivitAI as a shortened file identifier.
+
+    Reference: https://developer.civitai.com/site/reference/model-versions
+    """
+    full_hash = hashlib.sha256()
+    chunk_size = _get_hash_chunk_size_bytes()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(chunk_size), b""):
+            full_hash.update(byte_block)
+    return full_hash.hexdigest()[:10]
+
+
+def read_safetensors_metadata(file_path: str) -> dict[str, Any]:
+    """Read the ``__metadata__`` dict from a safetensors file header.
+
+    Safetensors file format:
+      - 8 bytes: header length (little-endian 64-bit)
+      - N bytes: UTF-8 JSON header
+      - The header JSON contains a ``__metadata__`` key holding arbitrary metadata.
+
+    Returns an empty dict if the file is not a valid safetensors file or has no
+    metadata.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            header_len_bytes = f.read(8)
+            if len(header_len_bytes) < 8:
+                return {}
+            header_len = struct.unpack("<Q", header_len_bytes)[0]
+            header_bytes = f.read(header_len)
+            if len(header_bytes) < header_len:
+                return {}
+            header = json.loads(header_bytes.decode("utf-8"))
+            return header.get("__metadata__", {})
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, struct.error, MemoryError, Exception):
+        return {}
+
+
+def calculate_autov3(file_path: str) -> str | None:
+    """Calculate CivitAI AutoV3 hash from a safetensors file.
+
+    AutoV3 is extracted from the safetensors file's embedded metadata, not
+    computed from the file bytes directly. The orchestrator reads the
+    ``sshs_model_hash`` (kohya-ss format) or ``modelspec.hash_sha256`` field
+    from the safetensors header and stores the first 12 characters.
+
+    The embedded hash itself is the SHA256 of the file after skipping the
+    8-byte header length + JSON header (a.k.a. the addnet hash / tensor-only
+    hash).
+
+    Reference:
+      - CivitAI DB trigger: ``SUBSTRING(NEW.hash FROM 1 FOR 12)``
+      - https://developer.civitai.com/site/reference/model-versions
+
+    Returns ``None`` when no AutoV3 hash can be determined (e.g. the file is
+    not safetensors, or the metadata doesn't contain a recognised hash field).
+    """
+    metadata = read_safetensors_metadata(file_path)
+    if not metadata:
+        return None
+
+    embedded_hash = metadata.get("sshs_model_hash") or metadata.get("modelspec.hash_sha256")
+    if embedded_hash and isinstance(embedded_hash, str) and len(embedded_hash) >= 12:
+        return embedded_hash[:12]
+
+    return None
+
+
+def find_preview_file(base_name: str, dir_path: str) -> str:
+    """Find preview file for given base name in directory.
+
+    Performs an exact-case check first (fast path), then falls back to a
+    case-insensitive scan so that files like ``model.WEBP`` or ``model.Png``
+    are discovered on case-sensitive filesystems.
+    """
+
+    temp_extensions = PREVIEW_EXTENSIONS.copy()
+    # Add example extension for compatibility
+    # https://github.com/willmiao/ComfyUI-Lora-Manager/issues/225
+    # The preview image will be optimized to lora-name.webp, so it won't affect other logic
+    temp_extensions.append(".example.0.jpeg")
+
+    # Fast path: exact-case match
+    for ext in temp_extensions:
+        full_pattern = os.path.join(dir_path, f"{base_name}{ext}")
+        if os.path.exists(full_pattern):
+            return full_pattern.replace(os.sep, "/")
+
+    # Slow path: case-insensitive match for systems with mixed-case extensions
+    # (e.g. .WEBP, .Png, .JPG placed manually or by external tools)
+    try:
+        dir_entries = os.listdir(dir_path)
+    except OSError:
+        return ""
+
+    base_lower = base_name.lower()
+    for ext in temp_extensions:
+        target = f"{base_lower}{ext}"  # ext is already lowercase
+        for entry in dir_entries:
+            if entry.lower() == target:
+                return os.path.join(dir_path, entry).replace(os.sep, "/")
+
+    return ""
+
+def get_preview_extension(preview_path: str) -> str:
+    """Get the complete preview extension from a preview file path
+    
+    Args:
+        preview_path: Path to the preview file
+        
+    Returns:
+        str: The complete extension (e.g., '.preview.png', '.png', '.webp')
+    """
+    preview_path_lower = preview_path.lower()
+    
+    # Check for compound extensions first (longer matches first)
+    for ext in sorted(PREVIEW_EXTENSIONS, key=len, reverse=True):
+        if preview_path_lower.endswith(ext.lower()):
+            return ext
+    
+    return os.path.splitext(preview_path)[1]
+
+def normalize_path(path: str) -> str:
+    """Normalize file path to use forward slashes"""
+    return path.replace(os.sep, "/") if path else path

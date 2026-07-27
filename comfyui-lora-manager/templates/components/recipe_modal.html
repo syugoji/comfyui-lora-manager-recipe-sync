@@ -1,0 +1,222 @@
+<div id="recipeModal" class="modal">
+    <div class="modal-content">
+        <button class="close" onclick="modalManager.closeModal('recipeModal')">&times;</button>
+        
+        <header class="recipe-modal-header">
+            <h2 id="recipeModalTitle">Recipe Details</h2>
+            <!-- Header Actions: populated dynamically in RecipeModal.js -->
+            <div class="recipe-header-actions" id="recipeHeaderActions"></div>
+            <!-- Recipe Tags Container (rendered by renderCompactTags) -->
+            <div id="recipeTagsContainer"></div>
+        </header>
+        
+        <div class="modal-body">
+            <section class="recipe-revision-banner" id="recipeRevisionBanner" hidden aria-live="polite">
+                <div class="recipe-revision-banner-heading">
+                    <span><i class="fas fa-robot"></i> <strong>AI補完・改変済み</strong></span>
+                    <span class="recipe-revision-original-state">元レシピ未変更</span>
+                </div>
+                <div class="recipe-revision-meta" id="recipeRevisionMeta"></div>
+                <p class="recipe-revision-prompt" id="recipeRevisionPrompt"></p>
+            </section>
+            <!-- Top Section: Preview and Generation Parameters -->
+            <div class="recipe-top-section">
+                <div class="recipe-preview-container" id="recipePreviewContainer">
+                    <img id="recipeModalImage" src="" alt="Recipe Preview" class="recipe-preview-media">
+                    <!-- Source URL elements are now added dynamically in RecipeModal.js -->
+                </div>
+                
+                <div class="info-section recipe-gen-params">
+                    <div class="gen-params-header-row">
+                        <h3>Generation Parameters</h3>
+                        <div class="ai-prompt-model-controls">
+                            <label for="aiPromptModelSelect">画像認識</label>
+                            <select id="aiPromptModelSelect" title="LM Studioで使用する画像認識モデル">
+                                <option value="qwen35-q6">Qwen3.5 9B Q6_K</option>
+                                <option value="qwythos-q5">Qwythos 9B Q5_K_M</option>
+                            </select>
+                            <button class="ai-prompt-draft-btn" id="createAiPromptDraftBtn" type="button" title="キャッシュがあれば再利用し、画像内容を補完します">
+                                <i class="fas fa-eye"></i>
+                                <span>AIで画像内容を補完</span>
+                            </button>
+                            <button class="ai-prompt-regenerate-btn" id="regenerateAiPromptDraftBtn" type="button" title="保存済み結果を使わず、選択モデルで画像を再解析します">
+                                <i class="fas fa-rotate"></i>
+                                <span>再生成</span>
+                            </button>
+                        </div>
+                        <label class="inline-toggle-container lora-strip-toggle" title="When enabled, &lt;lora:...&gt; tags are removed from prompt text when copying">
+                            <span class="inline-toggle-label">Strip &lt;lora:&gt;</span>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="stripLoraOnCopyToggle">
+                                <span class="toggle-slider"></span>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <div class="gen-params-container">
+                        <!-- Prompt -->
+                        <div class="param-group info-item">
+                            <div class="param-header">
+                                <label>Prompt</label>
+                                <div class="param-actions">
+                                    <button class="copy-btn" id="sendPromptBtn" title="Send Prompt to Workflow">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                    <button class="copy-btn" id="copyPromptBtn" title="Copy Prompt">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="edit-btn" id="editPromptBtn" title="Edit Prompt">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="param-content" id="recipePrompt"></div>
+                            <div class="param-editor" id="recipePromptEditor">
+                                <textarea
+                                    class="param-textarea"
+                                    id="recipePromptInput"
+                                    placeholder="Enter prompt"
+                                ></textarea>
+                                <div class="param-editor-hint">
+                                    {{ t('toast.recipes.promptEditorHint') }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <section class="ai-prompt-draft-panel" id="aiPromptDraftPanel" hidden aria-live="polite">
+                            <div class="ai-prompt-draft-header">
+                                <strong>AI補完の下書き</strong>
+                                <span class="ai-prompt-draft-status" id="aiPromptDraftStatus"></span>
+                            </div>
+                            <div class="ai-prompt-image-source" id="aiPromptImageSource"></div>
+                            <div class="ai-prompt-draft-warning" id="aiPromptDraftWarning" hidden></div>
+                            <div class="ai-prompt-protected-summary">
+                                <span>機械的に保持する情報</span>
+                                <div class="ai-prompt-protected-fragments" id="aiPromptProtectedFragments"></div>
+                            </div>
+                            <p class="ai-prompt-description" id="aiPromptDescription"></p>
+                            <textarea class="param-textarea ai-prompt-draft-text" id="aiPromptDraftText" readonly aria-label="AI prompt draft"></textarea>
+                            <div class="ai-prompt-draft-actions">
+                                <span>下書きのみです。元レシピは変更されていません。</span>
+                                <button class="copy-btn" id="copyAiPromptDraftBtn" type="button" title="AI下書きをコピー">
+                                    <i class="fas fa-copy"></i>
+                                    <span>コピー</span>
+                                </button>
+                            </div>
+                            <div class="ai-prompt-trial-controls">
+                                <button class="ai-prompt-trial-start" id="startAiPromptTrialsBtn" type="button" disabled>
+                                    <i class="fas fa-images"></i>
+                                    <span>seed違い4候補を生成</span>
+                                </button>
+                                <button class="copy-btn" id="refreshAiPromptTrialsBtn" type="button" title="24時間以内の候補履歴を再確認">
+                                    <i class="fas fa-history"></i>
+                                    <span>履歴を再確認</span>
+                                </button>
+                                <button class="copy-btn ai-prompt-trial-cancel" id="cancelAiPromptTrialsBtn" type="button" hidden>
+                                    <i class="fas fa-stop"></i>
+                                    <span>停止</span>
+                                </button>
+                            </div>
+                            <div class="ai-prompt-trial-status" id="aiPromptTrialStatus"></div>
+                            <div class="ai-prompt-trial-grid" id="aiPromptTrialGrid" hidden></div>
+                        </section>
+                        
+                        <!-- Negative Prompt -->
+                        <div class="param-group info-item">
+                            <div class="param-header">
+                                <label>Negative Prompt</label>
+                                <div class="param-actions">
+                                    <button class="copy-btn" id="sendNegativePromptBtn" title="Send Negative Prompt to Workflow">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                    <button class="copy-btn" id="copyNegativePromptBtn" title="Copy Negative Prompt">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="edit-btn" id="editNegativePromptBtn" title="Edit Negative Prompt">
+                                        <i class="fas fa-pencil-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="param-content" id="recipeNegativePrompt"></div>
+                            <div class="param-editor" id="recipeNegativePromptEditor">
+                                <textarea
+                                    class="param-textarea"
+                                    id="recipeNegativePromptInput"
+                                    placeholder="Enter negative prompt"
+                                ></textarea>
+                                <div class="param-editor-hint">
+                                    {{ t('toast.recipes.promptEditorHint') }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Personal Notes -->
+                        <div class="param-group info-item recipe-notes-editor-group">
+                            <div class="param-header">
+                                <label for="recipeNotesInput">メモ</label>
+                                <div class="param-actions">
+                                    <button class="edit-btn" id="saveRecipeNotesBtn" title="メモを保存">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea
+                                class="param-textarea recipe-notes-input"
+                                id="recipeNotesInput"
+                                placeholder="雰囲気、チェックポイント、シチュエーション、キャラなど"
+                            ></textarea>
+                            <div class="param-editor-hint">Ctrl+Enterで保存</div>
+                        </div>
+                        
+                        <!-- Other Parameters -->
+                        <div class="param-group info-item">
+                            <div class="param-header">
+                                <label>Params</label>
+                                <div class="param-actions">
+                                    <button class="copy-btn" id="sendParamsBtn" title="Send Params to Workflow">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="other-params" id="recipeOtherParams"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bottom Section: Resources -->
+            <div class="info-section recipe-bottom-section">
+                <div class="recipe-section-header">
+                    <h3>Resources</h3>
+                <div class="recipe-section-actions">
+                    <span id="recipeLorasCount"><i class="fas fa-layer-group"></i> 0 LoRAs</span>
+                    <button class="action-btn view-loras-btn" id="viewRecipeLorasBtn" title="View all LoRAs in this recipe">
+                        <i class="fas fa-external-link-alt"></i>
+                    </button>
+                    <button class="copy-btn" id="copyRecipeSyntaxBtn" title="Copy Recipe Syntax">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="copy-btn" id="copyRecipeReferenceBtn" title="参考情報をコピー（Checkpoint・LoRA構成・プロンプト・生成条件。再現不可レシピでも利用可）">
+                        <i class="fas fa-clipboard-list"></i>
+                    </button>
+                    <button class="action-btn send-recipe-btn" id="sendRecipeBtn" title="Send Recipe to ComfyUI">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button class="action-btn replay-recipe-workflow-btn" id="replayRecipeWorkflowBtn" title="チェックポイント・LoRA・生成条件を含むワークフローをComfyUIに再現">
+                        <i class="fas fa-magic"></i>
+                        <span>ComfyUIで再現</span>
+                    </button>
+                </div>
+            </div>
+            <div class="recipe-resources-list">
+                <div class="recipe-checkpoint-container" id="recipeCheckpoint"></div>
+                <div class="version-divider" id="recipeResourceDivider" style="display: none;"></div>
+                <div class="recipe-loras-list" id="recipeLorasList"></div>
+                <div class="version-divider" id="recipeEmbeddingDivider" style="display: none;"></div>
+                <div class="recipe-embeddings-header" id="recipeEmbeddingsHeader" style="display: none;"></div>
+                <div class="recipe-loras-list" id="recipeEmbeddingsList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>

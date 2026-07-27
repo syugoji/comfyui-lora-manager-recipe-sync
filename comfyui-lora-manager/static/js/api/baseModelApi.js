@@ -1,0 +1,1886 @@
+import { state, getCurrentPageState } from '../state/index.js';
+import { showToast } from '../utils/uiHelpers.js';
+import { translate } from '../utils/i18nHelpers.js';
+import { getStorageItem, getSessionItem, removeSessionItem, saveMapToStorage } from '../utils/storageHelpers.js';
+import {
+    getCompleteApiConfig,
+    getCurrentModelType,
+    isValidModelType,
+    DOWNLOAD_ENDPOINTS,
+    WS_ENDPOINTS
+} from './apiConfig.js';
+import { resetAndReload } from './modelApiFactory.js';
+import { sidebarManager } from '../components/SidebarManager.js';
+
+/**
+ * Abstract base class for all model API clients
+ */
+export class BaseModelApiClient {
+    constructor(modelType = null) {
+        if (this.constructor === BaseModelApiClient) {
+            throw new Error("BaseModelApiClient is abstract and cannot be instantiated directly");
+        }
+        this.modelType = modelType || getCurrentModelType();
+        this.apiConfig = getCompleteApiConfig(this.modelType);
+    }
+
+    /**
+     * Set the model type for this client instance
+     * @param {string} modelType - The model type to use
+     */
+    setModelType(modelType) {
+        if (!isValidModelType(modelType)) {
+            throw new Error(`Invalid model type: ${modelType}`);
+        }
+        this.modelType = modelType;
+        this.apiConfig = getCompleteApiConfig(modelType);
+    }
+
+    /**
+     * Get the current page state for this model type
+     */
+    getPageState() {
+        const currentType = state.currentPageType;
+        // Temporarily switch to get the right page state
+        state.currentPageType = this.modelType;
+        const pageState = getCurrentPageState();
+        state.currentPageType = currentType; // Restore
+        return pageState;
+    }
+
+    async fetchModelsPage(page = 1, pageSize = null) {
+        const pageState = this.getPageState();
+        const actualPageSize = pageSize || pageState.pageSize || this.apiConfig.config.defaultPageSize;
+        const isExcludedView = pageState.viewMode === 'excluded';
+
+        try {
+            const params = this._buildQueryParams({
+                page,
+                page_size: actualPageSize,
+                sort_by: pageState.sortBy
+            }, pageState);
+
+            // If params is null, it means wildcard resolved to no matches - return empty results
+            if (params === null) {
+                return {
+                    items: [],
+                    totalItems: 0,
+                    totalPages: 0,
+                    currentPage: page,
+                    hasMore: false,
+                    folders: []
+                };
+            }
+
+            const endpoint = isExcludedView
+                ? this.apiConfig.endpoints.excluded
+                : this.apiConfig.endpoints.list;
+            const response = await fetch(`${endpoint}?${params}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${this.apiConfig.config.displayName}s: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            return {
+                items: data.items,
+                totalItems: data.total,
+                totalPages: data.total_pages,
+                currentPage: page,
+                hasMore: page < data.total_pages,
+                folders: data.folders || []
+            };
+
+        } catch (error) {
+            console.error(`Error fetching ${this.apiConfig.config.displayName}s:`, error);
+            showToast('toast.api.fetchFailed', { type: this.apiConfig.config.displayName, message: error.message }, 'error');
+            throw error;
+        }
+    }
+
+    async cancelTask() {
+        try {
+            const endpoint = this.apiConfig.endpoints.cancelTask;
+            const response = await fetch(endpoint, {
+                method: 'POST'
+            });
+            return await response.json();
+        } catch (error) {
+            console.error(`Error cancelling task for ${this.modelType}:`, error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async loadMoreWithVirtualScroll(resetPage = false, updateFolders = false) {
+        const pageState = this.getPageState();
+
+        try {
+            // Use grid-scoped loading instead of full-page overlay
+            if (state.virtualScroller?.showGridLoading) {
+                state.virtualScroller.showGridLoading();
+            }
+
+            pageState.isLoading = true;
+            if (resetPage) {
+                pageState.currentPage = 1; // Reset to first page
+            }
+
+            const result = await this.fetchModelsPage(pageState.currentPage, pageState.pageSize);
+
+            state.virtualScroller.refreshWithData(
+                result.items,
+                result.totalItems,
+                result.hasMore
+            );
+
+            pageState.hasMore = result.hasMore;
+            pageState.currentPage = pageState.currentPage + 1;
+
+            // When resetting to page 1, scroll back to the top
+            // This covers: folder selection, filter/sort/search changes,
+            // favorites/update/excluded view toggles, alphabet filter, etc.
+            if (resetPage) {
+                const scrollContainer = document.querySelector('.page-content');
+                if (scrollContainer) {
+                    scrollContainer.scrollTop = 0;
+                }
+            }
+
+            if (updateFolders) {
+                sidebarManager.refresh();
+            }
+
+            return result;
+        } catch (error) {
+            console.error(`Error reloading ${this.apiConfig.config.displayName}s:`, error);
+            showToast('toast.api.reloadFailed', { type: this.apiConfig.config.displayName, message: error.message }, 'error');
+            throw error;
+        } finally {
+            pageState.isLoading = false;
+            // Wait for the next rAF so refreshWithData's scheduleRender has
+            // completed rendering new cards before hiding the grid loading overlay.
+            // This eliminates the ~6.7ms blank-frame gap that caused the flicker.
+            if (state.virtualScroller?.hideGridLoading) {
+                requestAnimationFrame(() => {
+                    state.virtualScroller.hideGridLoading();
+                });
+            }
+        }
+    }
+
+    async deleteModel(filePath) {
+        try {
+            state.loadingManager.showSimpleLoading(`Deleting ${this.apiConfig.config.singularName}...`);
+
+            const response = await fetch(this.apiConfig.endpoints.delete, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to delete ${this.apiConfig.config.singularName}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (state.virtualScroller) {
+                    state.virtualScroller.removeItemByFilePath(filePath);
+                }
+                showToast('toast.api.deleteSuccess', { type: this.apiConfig.config.displayName }, 'success');
+                return true;
+            } else {
+                throw new Error(data.error || `Failed to delete ${this.apiConfig.config.singularName}`);
+            }
+        } catch (error) {
+            console.error(`Error deleting ${this.apiConfig.config.singularName}:`, error);
+            showToast('toast.api.deleteFailed', { type: this.apiConfig.config.singularName, message: error.message }, 'error');
+            return false;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async excludeModel(filePath) {
+        try {
+            state.loadingManager.showSimpleLoading(`Excluding ${this.apiConfig.config.singularName}...`);
+
+            const response = await fetch(this.apiConfig.endpoints.exclude, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to exclude ${this.apiConfig.config.singularName}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (state.virtualScroller) {
+                    state.virtualScroller.removeItemByFilePath(filePath);
+                }
+                showToast('toast.api.excludeSuccess', { type: this.apiConfig.config.displayName }, 'success');
+                return true;
+            } else {
+                throw new Error(data.error || `Failed to exclude ${this.apiConfig.config.singularName}`);
+            }
+        } catch (error) {
+            console.error(`Error excluding ${this.apiConfig.config.singularName}:`, error);
+            showToast('toast.api.excludeFailed', { type: this.apiConfig.config.singularName, message: error.message }, 'error');
+            return false;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async unexcludeModel(filePath) {
+        try {
+            state.loadingManager.showSimpleLoading(`Restoring ${this.apiConfig.config.singularName}...`);
+
+            const response = await fetch(this.apiConfig.endpoints.unexclude, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to restore ${this.apiConfig.config.singularName}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (state.virtualScroller) {
+                    state.virtualScroller.removeItemByFilePath(filePath);
+                }
+                showToast(
+                    'toast.api.restoreSuccess',
+                    { type: this.apiConfig.config.displayName },
+                    'success',
+                    `Restored ${this.apiConfig.config.displayName}`
+                );
+                return true;
+            }
+
+            throw new Error(data.error || `Failed to restore ${this.apiConfig.config.singularName}`);
+        } catch (error) {
+            console.error(`Error restoring ${this.apiConfig.config.singularName}:`, error);
+            showToast(
+                'toast.api.restoreFailed',
+                { type: this.apiConfig.config.singularName, message: error.message },
+                'error',
+                `Failed to restore ${this.apiConfig.config.singularName}: ${error.message}`
+            );
+            return false;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async renameModelFile(filePath, newFileName) {
+        try {
+            state.loadingManager.showSimpleLoading(`Renaming ${this.apiConfig.config.singularName} file...`);
+
+            const response = await fetch(this.apiConfig.endpoints.rename, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_path: filePath,
+                    new_file_name: newFileName
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                state.virtualScroller.updateSingleItem(filePath, {
+                    file_name: newFileName,
+                    file_path: result.new_file_path,
+                    preview_url: result.new_preview_path
+                });
+
+                showToast('toast.api.fileNameUpdated', {}, 'success');
+            } else {
+                showToast('toast.api.fileRenameFailed', { error: result.error || 'Unknown error' }, 'error');
+            }
+
+            return result;
+        } catch (error) {
+            console.error(`Error renaming ${this.apiConfig.config.singularName} file:`, error);
+            throw error;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    replaceModelPreview(filePath) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*,image/webp,video/mp4';
+
+        input.onchange = async () => {
+            if (!input.files || !input.files[0]) return;
+
+            const file = input.files[0];
+            await this.uploadPreview(filePath, file);
+        };
+
+        input.click();
+    }
+
+    async uploadPreview(filePath, file, nsfwLevel = 0) {
+        try {
+            state.loadingManager.showSimpleLoading('Uploading preview...');
+
+            const formData = new FormData();
+            formData.append('preview_file', file);
+            formData.append('model_path', filePath);
+            formData.append('nsfw_level', nsfwLevel.toString());
+
+            const response = await fetch(this.apiConfig.endpoints.replacePreview, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const data = await response.json();
+            const pageState = this.getPageState();
+
+            const timestamp = Date.now();
+            if (pageState.previewVersions) {
+                pageState.previewVersions.set(filePath, timestamp);
+
+                const storageKey = `${this.modelType}_preview_versions`;
+                saveMapToStorage(storageKey, pageState.previewVersions);
+            }
+
+            const updateData = {
+                preview_url: data.preview_url,
+                preview_nsfw_level: data.preview_nsfw_level
+            };
+
+            state.virtualScroller.updateSingleItem(filePath, updateData);
+            showToast('toast.api.previewUpdated', {}, 'success');
+        } catch (error) {
+            console.error('Error uploading preview:', error);
+            showToast('toast.api.previewUploadFailed', {}, 'error');
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    /**
+     * Set a preview from a remote URL (e.g., CivitAI)
+     * @param {string} filePath - Path to the model file
+     * @param {string} imageUrl - Remote image URL
+     * @param {number} nsfwLevel - NSFW level for the preview
+     */
+    async setPreviewFromUrl(filePath, imageUrl, nsfwLevel = 0) {
+        try {
+            state.loadingManager.showSimpleLoading('Setting preview from URL...');
+
+            const response = await fetch(this.apiConfig.endpoints.setPreviewFromUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model_path: filePath,
+                    image_url: imageUrl,
+                    nsfw_level: nsfwLevel
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to set preview from URL');
+            }
+
+            const data = await response.json();
+            const pageState = this.getPageState();
+
+            const timestamp = Date.now();
+            if (pageState.previewVersions) {
+                pageState.previewVersions.set(filePath, timestamp);
+
+                const storageKey = `${this.modelType}_preview_versions`;
+                saveMapToStorage(storageKey, pageState.previewVersions);
+            }
+
+            const updateData = {
+                preview_url: data.preview_url,
+                preview_nsfw_level: data.preview_nsfw_level
+            };
+
+            state.virtualScroller.updateSingleItem(filePath, updateData);
+            showToast('toast.api.previewUpdated', {}, 'success');
+        } catch (error) {
+            console.error('Error setting preview from URL:', error);
+            showToast('toast.api.previewUploadFailed', {}, 'error');
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async saveModelMetadata(filePath, data) {
+        try {
+            state.loadingManager.showSimpleLoading('Saving metadata...');
+
+            const response = await fetch(this.apiConfig.endpoints.save, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_path: filePath,
+                    ...data
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save metadata');
+            }
+
+            const result = await response.json();
+            state.virtualScroller.updateSingleItem(filePath, {
+                ...data,
+                auto_tags: result.auto_tags,
+            });
+            return result;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async addTags(filePath, data) {
+        try {
+            state.loadingManager.showSimpleLoading('Adding tags...');
+            const response = await fetch(this.apiConfig.endpoints.addTags, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_path: filePath,
+                    ...data
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to add tags');
+            }
+
+            const result = await response.json();
+
+            if (result.success && result.tags) {
+                state.virtualScroller.updateSingleItem(filePath, {
+                    tags: result.tags,
+                    auto_tags: result.auto_tags,
+                });
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error adding tags:', error);
+            throw error;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async refreshModels(fullRebuild = false) {
+        const abortController = new AbortController();
+        try {
+            state.loadingManager.show(
+                `${fullRebuild ? 'Full rebuild' : 'Refreshing'} ${this.apiConfig.config.displayName}s...`,
+                0
+            );
+            state.loadingManager.showCancelButton(() => {
+                this.cancelTask();
+                abortController.abort();
+            });
+
+            const url = new URL(this.apiConfig.endpoints.scan, window.location.origin);
+            url.searchParams.append('full_rebuild', fullRebuild);
+
+            const response = await fetch(url, { signal: abortController.signal });
+
+            if (!response.ok) {
+                throw new Error(`Failed to refresh ${this.apiConfig.config.displayName}s: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.status === 'cancelled') {
+                showToast('toast.api.operationCancelled', {}, 'info');
+                return;
+            }
+
+            resetAndReload(true);
+
+            showToast('toast.api.refreshComplete', { action: fullRebuild ? 'Full rebuild' : 'Refresh' }, 'success');
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showToast('toast.api.operationCancelled', {}, 'info');
+                return;
+            }
+            console.error('Refresh failed:', error);
+            showToast('toast.api.refreshFailed', { action: fullRebuild ? 'rebuild' : 'refresh', type: this.apiConfig.config.displayName }, 'error');
+        } finally {
+            state.loadingManager.hide();
+            state.loadingManager.restoreProgressBar();
+        }
+    }
+
+    async refreshSingleModelMetadata(filePath) {
+        try {
+            state.loadingManager.showSimpleLoading('Refreshing metadata...');
+
+            const response = await fetch(this.apiConfig.endpoints.fetchCivitai, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to refresh metadata');
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                if (data.metadata && state.virtualScroller) {
+                    state.virtualScroller.updateSingleItem(filePath, data.metadata);
+                }
+
+                showToast('toast.api.metadataRefreshed', {}, 'success');
+                return true;
+            } else {
+                throw new Error(data.error || 'Failed to refresh metadata');
+            }
+        } catch (error) {
+            console.error('Error refreshing metadata:', error);
+            showToast('toast.api.metadataRefreshFailed', { message: error.message }, 'error');
+            return false;
+        } finally {
+            state.loadingManager.hide();
+            state.loadingManager.restoreProgressBar();
+        }
+    }
+
+    async fetchCivitaiMetadata() {
+        let ws = null;
+
+        await state.loadingManager.showWithProgress(async (loading) => {
+            try {
+                loading.showCancelButton(() => this.cancelTask());
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                ws = new WebSocket(`${wsProtocol}${window.location.host}${WS_ENDPOINTS.fetchProgress}`);
+
+                // Wait for WebSocket connection to establish
+                await new Promise((resolve, reject) => {
+                    ws.onopen = resolve;
+                    ws.onerror = reject;
+                });
+
+                // Now that we're connected, set up the message/error handlers
+                // for the actual operation (separate from connection errors)
+                const operationComplete = new Promise((resolve, reject) => {
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+
+                        switch (data.status) {
+                            case 'started':
+                                loading.setStatus('Starting metadata fetch...');
+                                break;
+
+                            case 'processing': {
+                                const handled = data.handled || data.processed;
+                                const percent = ((handled / data.total) * 100).toFixed(1);
+                                loading.setProgress(percent);
+                                let statusText = `Processing (${handled}/${data.total}) ${data.current_name || ''}`;
+                                if (data.failure_count > 0) {
+                                    statusText += ` | ❌ ${data.failure_count} failed`;
+                                }
+                                if (data.skipped_count > 0) {
+                                    statusText += ` | ⏭️ ${data.skipped_count} skipped`;
+                                }
+                                loading.setStatus(statusText);
+                                break;
+                            }
+
+                            case 'completed': {
+                                loading.setProgress(100);
+                                let summaryText = `Completed: Updated ${data.success} of ${data.processed} ${this.apiConfig.config.displayName}s`;
+                                if (data.failure_count > 0) {
+                                    summaryText += ` | ❌ ${data.failure_count} failed`;
+                                }
+                                if (data.skipped_count > 0) {
+                                    summaryText += ` | ⏭️ ${data.skipped_count} skipped`;
+                                }
+                                summaryText += ` (⏱ ${data.elapsed_seconds || '?'}s)`;
+                                loading.setStatus(summaryText);
+                                resolve(data);
+                                break;
+                            }
+
+                            case 'cancelled':
+                                loading.setStatus('Operation cancelled by user');
+                                resolve(data);
+                                break;
+
+                            case 'error':
+                                reject(new Error(data.error));
+                                break;
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        reject(new Error('WebSocket error: ' + error.message));
+                    };
+                });
+
+                const response = await fetch(this.apiConfig.endpoints.fetchAllCivitai, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch metadata');
+                }
+
+                // Wait for the operation to complete via WebSocket
+                const finalData = await operationComplete;
+
+                resetAndReload(false);
+
+                // Show result summary with failure details
+                if (finalData) {
+                    this._showMetadataRefreshResult(finalData);
+                }
+            } catch (error) {
+                console.error('Error fetching metadata:', error);
+                showToast('toast.api.metadataFetchFailed', { message: error.message }, 'error');
+            } finally {
+                if (ws) {
+                    ws.close();
+                }
+            }
+        }, {
+            initialMessage: 'Connecting...',
+            completionMessage: 'Metadata update complete'
+        });
+    }
+
+    _showMetadataRefreshResult(data) {
+        const { success, total } = data;
+
+        if (data.status === 'cancelled') {
+            showToast('toast.api.operationCancelledPartial', { success, total }, 'info');
+            return;
+        }
+
+        this._showFailureDetailsModal(data);
+    }
+
+    _showFailureDetailsModal(data) {
+        const { failures = [], success, processed, total, failure_count, skipped_count, elapsed_seconds } = data;
+
+        // Build failure list HTML
+        const failureRows = failures.map((f, i) =>
+            `<tr>
+                <td class="failure-index">${i + 1}</td>
+                <td class="failure-name" title="${this._escapeHtml(f.name)}">${this._escapeHtml(f.name)}</td>
+                <td class="failure-error">${this._escapeHtml(f.error || 'Unknown')}</td>
+            </tr>`
+        ).join('');
+
+        const modalHtml = `
+            <div id="metadataRefreshResultModal" class="modal" style="display: block;">
+                <div class="modal-content metadata-refresh-result-modal">
+                    <button class="close" data-action="close-modal">&times;</button>
+
+                    <h2>${translate('modals.metadataFetchSummary.title', {}, 'Metadata Fetch Summary')}</h2>
+
+                    <div class="refresh-summary-stats">
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">${translate('modals.metadataFetchSummary.statSuccess', {}, 'Success')}</span>
+                                <span class="stat-card-value">${success}</span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-failure">
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">${translate('modals.metadataFetchSummary.statFailed', {}, 'Failed')}</span>
+                                <span class="stat-card-value">${failure_count}</span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-skipped">
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">${translate('modals.metadataFetchSummary.statSkipped', {}, 'Skipped')}</span>
+                                <span class="stat-card-value">${skipped_count}</span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-total">
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">${translate('modals.metadataFetchSummary.statTotal', {}, 'Total Scanned')}</span>
+                                <span class="stat-card-value">${total || processed}</span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-time">
+                            <div class="stat-card-body">
+                                <span class="stat-card-label">${translate('modals.metadataFetchSummary.statDuration', {}, 'Duration')}</span>
+                                <span class="stat-card-value">${elapsed_seconds}s</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${failure_count > 0 ? `
+                    <div class="refresh-failures-section">
+                        <h4><i class="fas fa-exclamation-triangle"></i> ${translate('modals.metadataFetchSummary.failedItems', { count: failure_count }, 'Failed Items (' + failure_count + ')')}</h4>
+                        <div class="failure-table-wrapper">
+                            <table class="failure-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>${translate('modals.metadataFetchSummary.columnModelName', {}, 'Model Name')}</th>
+                                        <th>${translate('modals.metadataFetchSummary.columnError', {}, 'Error')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${failureRows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                    ` : `
+                    <div class="refresh-success-message">
+                        <i class="fas fa-check-circle"></i> ${translate('modals.metadataFetchSummary.successMessage', { count: success, type: this.apiConfig.config.displayName }, 'All ' + success + ' ' + this.apiConfig.config.displayName + 's updated successfully!')}
+                    </div>
+                    `}
+
+                    <div class="modal-actions">
+                        <button class="cancel-btn" data-action="close-modal">${translate('modals.metadataFetchSummary.close', {}, 'Close')}</button>
+                        ${failure_count > 0 ? `
+                        <button class="secondary-btn" data-action="copy-report"><i class="fas fa-copy"></i> ${translate('modals.metadataFetchSummary.copyReport', {}, 'Copy Report')}</button>
+                        <button class="secondary-btn" data-action="download-csv"><i class="fas fa-download"></i> ${translate('modals.metadataFetchSummary.downloadCsv', {}, 'Download CSV')}</button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('metadataRefreshResultModal');
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.innerHTML = modalHtml;
+        const modal = container.firstElementChild;
+        document.body.appendChild(modal);
+
+        modal.addEventListener('click', (e) => {
+            const action = e.target.closest('[data-action]')?.dataset.action;
+            if (!action) return;
+            e.preventDefault();
+
+            switch (action) {
+                case 'close-modal':
+                    modal.remove();
+                    break;
+                case 'copy-report':
+                    BaseModelApiClient._copyRefreshReport(e.target.closest('[data-action]'), data);
+                    break;
+                case 'download-csv':
+                    BaseModelApiClient._downloadRefreshReport(data);
+                    break;
+            }
+        });
+    }
+
+    _escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    static _copyRefreshReport(btn, data) {
+        const { failures = [], success, processed, total, failure_count, skipped_count, elapsed_seconds } = data;
+        const lines = [
+            '=== Metadata Refresh Report ===',
+            `Date: ${new Date().toLocaleString()}`,
+            `Duration: ${elapsed_seconds}s`,
+            `Total scanned: ${total || processed}`,
+            `Successfully updated: ${success}`,
+            `Failed: ${failure_count}`,
+            `Skipped: ${skipped_count}`,
+            '',
+        ];
+        if (failure_count > 0) {
+            lines.push('--- Failed Items ---');
+            failures.forEach((f, i) => {
+                lines.push(`${i + 1}. ${f.name || 'Unknown'} — ${f.error || 'Unknown error'}`);
+            });
+            lines.push('');
+        }
+        lines.push('====================');
+
+        const text = lines.join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('toast.api.copiedToClipboard', {}, 'success');
+            if (btn) {
+                const origHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => { btn.innerHTML = origHTML; }, 2000);
+            }
+        }).catch(() => {
+            // Fallback
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('toast.api.copiedToClipboard', {}, 'success');
+        });
+    }
+
+    static _downloadRefreshReport(data) {
+        const { failures = [], success, processed, total, failure_count, skipped_count, elapsed_seconds } = data;
+
+        // CSV header
+        let csv = 'Model Name,Error\n';
+        failures.forEach(f => {
+            const name = (f.name || 'Unknown').replace(/"/g, '""');
+            const error = (f.error || 'Unknown').replace(/"/g, '""');
+            csv += `"${name}","${error}"\n`;
+        });
+
+        // Add summary as trailing comments
+        csv += `\n# Summary: ${success} success, ${failure_count} failed, ${skipped_count} skipped, ${elapsed_seconds}s\n`;
+        csv += `# Total scanned: ${total || processed}\n`;
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `metadata-refresh-failures-${Date.now()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('toast.api.downloadStarted', {}, 'success');
+    }
+
+    async refreshBulkModelMetadata(filePaths) {
+        if (!filePaths || filePaths.length === 0) {
+            throw new Error('No file paths provided');
+        }
+
+        const totalItems = filePaths.length;
+        let processedCount = 0;
+        let successCount = 0;
+        let failedItems = [];
+
+        const progressController = state.loadingManager.showEnhancedProgress('Starting metadata refresh...');
+        let cancelled = false;
+        progressController.showCancelButton(() => {
+            cancelled = true;
+            this.cancelTask();
+        });
+
+        try {
+            for (let i = 0; i < filePaths.length; i++) {
+                if (cancelled) {
+                    break;
+                }
+                const filePath = filePaths[i];
+                const fileName = filePath.split('/').pop();
+
+                try {
+                    const overallProgress = Math.floor((i / totalItems) * 100);
+                    progressController.updateProgress(
+                        overallProgress,
+                        fileName,
+                        `Processing ${i + 1}/${totalItems}: ${fileName}`
+                    );
+
+                    const response = await fetch(this.apiConfig.endpoints.fetchCivitai, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ file_path: filePath })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        if (data.metadata && state.virtualScroller) {
+                            state.virtualScroller.updateSingleItem(filePath, data.metadata);
+                        }
+                        successCount++;
+                    } else {
+                        throw new Error(data.error || 'Failed to refresh metadata');
+                    }
+
+                } catch (error) {
+                    console.error(`Error refreshing metadata for ${fileName}:`, error);
+                    failedItems.push({ filePath, fileName, error: error.message });
+                }
+
+                processedCount++;
+            }
+
+            let completionMessage;
+            if (cancelled) {
+                completionMessage = translate('toast.api.operationCancelledPartial', { success: successCount, total: totalItems }, `Operation cancelled. ${successCount} items processed.`);
+                showToast('toast.api.operationCancelledPartial', { success: successCount, total: totalItems }, 'info');
+            } else if (successCount === totalItems) {
+                completionMessage = translate('toast.api.bulkMetadataCompleteAll', { count: successCount, type: this.apiConfig.config.displayName }, `Successfully refreshed all ${successCount} ${this.apiConfig.config.displayName}s`);
+                showToast('toast.api.bulkMetadataCompleteAll', { count: successCount, type: this.apiConfig.config.displayName }, 'success');
+            } else if (successCount > 0) {
+                completionMessage = translate('toast.api.bulkMetadataCompletePartial', { success: successCount, total: totalItems, type: this.apiConfig.config.displayName }, `Refreshed ${successCount} of ${totalItems} ${this.apiConfig.config.displayName}s`);
+                showToast('toast.api.bulkMetadataCompletePartial', { success: successCount, total: totalItems, type: this.apiConfig.config.displayName }, 'warning');
+            } else {
+                completionMessage = translate('toast.api.bulkMetadataCompleteNone', { type: this.apiConfig.config.displayName }, `Failed to refresh metadata for any ${this.apiConfig.config.displayName}s`);
+                showToast('toast.api.bulkMetadataCompleteNone', { type: this.apiConfig.config.displayName }, 'error');
+            }
+
+            await progressController.complete(completionMessage);
+
+            return {
+                success: successCount > 0,
+                total: totalItems,
+                processed: processedCount,
+                successful: successCount,
+                failed: failedItems.length,
+                errors: failedItems
+            };
+
+        } catch (error) {
+            console.error('Error in bulk metadata refresh:', error);
+            showToast('toast.api.bulkMetadataFailed', { message: error.message }, 'error');
+            await progressController.complete('Operation failed');
+            throw error;
+        }
+    }
+
+    async refreshUpdatesForModels(modelIds, { force = false } = {}) {
+        if (!Array.isArray(modelIds) || modelIds.length === 0) {
+            throw new Error('No model IDs provided');
+        }
+
+        const abortController = new AbortController();
+
+        try {
+            state.loadingManager.show('Checking for updates...', 0);
+            state.loadingManager.showCancelButton(() => {
+                this.cancelTask();
+                abortController.abort();
+            });
+
+            const response = await fetch(this.apiConfig.endpoints.refreshUpdates, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: abortController.signal,
+                body: JSON.stringify({
+                    model_ids: modelIds,
+                    force
+                })
+            });
+
+            let payload = {};
+            try {
+                payload = await response.json();
+            } catch (error) {
+                console.warn('Unable to parse refresh updates response as JSON', error);
+            }
+
+            if (!response.ok || payload?.success !== true) {
+                if (payload?.status === 'cancelled') {
+                    showToast('toast.api.operationCancelled', {}, 'info');
+                    return null;
+                }
+                const message = payload?.error || response.statusText || 'Failed to refresh updates';
+                throw new Error(message);
+            }
+
+            return payload;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showToast('toast.api.operationCancelled', {}, 'info');
+                return null;
+            }
+            console.error('Error refreshing updates for models:', error);
+            throw error;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async refreshUpdatesForFolder(folderPath, { force = false } = {}) {
+        if (!folderPath) {
+            throw new Error('No folder path provided');
+        }
+
+        const abortController = new AbortController();
+
+        try {
+            state.loadingManager.show('Checking for updates...', 0);
+            state.loadingManager.showCancelButton(() => {
+                this.cancelTask();
+                abortController.abort();
+            });
+
+            const response = await fetch(this.apiConfig.endpoints.refreshUpdates, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: abortController.signal,
+                body: JSON.stringify({
+                    folder_path: folderPath,
+                    force
+                })
+            });
+
+            let payload = {};
+            try {
+                payload = await response.json();
+            } catch (error) {
+                console.warn('Unable to parse refresh updates response as JSON', error);
+            }
+
+            if (!response.ok || payload?.success !== true) {
+                if (payload?.status === 'cancelled') {
+                    showToast('toast.api.operationCancelled', {}, 'info');
+                    return null;
+                }
+                const message = payload?.error || response.statusText || 'Failed to refresh updates';
+                throw new Error(message);
+            }
+
+            return payload;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showToast('toast.api.operationCancelled', {}, 'info');
+                return null;
+            }
+            console.error('Error refreshing updates for folder:', error);
+            throw error;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async fetchCivitaiVersions(modelId, source = null) {
+        try {
+            let requestUrl = `${this.apiConfig.endpoints.civitaiVersions}/${modelId}`;
+            if (source) {
+                const params = new URLSearchParams({ source });
+                requestUrl = `${requestUrl}?${params.toString()}`;
+            }
+
+            const response = await fetch(requestUrl);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (errorData && errorData.error && errorData.error.includes('Model type mismatch')) {
+                    throw new Error(`This model is not a ${this.apiConfig.config.displayName}. Please switch to the appropriate page to download this model type.`);
+                }
+                throw new Error('Failed to fetch model versions');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching Civitai versions:', error);
+            throw error;
+        }
+    }
+
+    async fetchModelUpdateVersions(modelId, { refresh = false, force = false } = {}) {
+        try {
+            const params = new URLSearchParams();
+            if (refresh) params.append('refresh', 'true');
+            if (force) params.append('force', 'true');
+            const query = params.toString();
+            const requestUrl = `${this.apiConfig.endpoints.modelUpdateVersions}/${modelId}${query ? `?${query}` : ''}`;
+
+            const response = await fetch(requestUrl);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to fetch model versions');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching model update versions:', error);
+            throw error;
+        }
+    }
+
+    async setModelUpdateIgnore(modelId, shouldIgnore) {
+        try {
+            const response = await fetch(this.apiConfig.endpoints.ignoreModelUpdate, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    modelId,
+                    shouldIgnore,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to update model ignore status');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error updating model ignore status:', error);
+            throw error;
+        }
+    }
+
+    async setVersionUpdateIgnore(modelId, versionId, shouldIgnore) {
+        try {
+            const response = await fetch(this.apiConfig.endpoints.ignoreVersionUpdate, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    modelId,
+                    versionId,
+                    shouldIgnore,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to update version ignore status');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error updating version ignore status:', error);
+            throw error;
+        }
+    }
+
+    async fetchModelRoots() {
+        try {
+            const response = await fetch(this.apiConfig.endpoints.roots);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${this.apiConfig.config.displayName} roots`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching model roots:', error);
+            throw error;
+        }
+    }
+
+    async fetchModelFolders() {
+        try {
+            const response = await fetch(this.apiConfig.endpoints.folders);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${this.apiConfig.config.displayName} folders`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching model folders:', error);
+            throw error;
+        }
+    }
+
+    async fetchUnifiedFolderTree() {
+        try {
+            const response = await fetch(this.apiConfig.endpoints.unifiedFolderTree);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch unified folder tree`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching unified folder tree:', error);
+            throw error;
+        }
+    }
+
+    async fetchFolderTree(modelRoot) {
+        try {
+            const params = new URLSearchParams({ model_root: modelRoot });
+            const response = await fetch(`${this.apiConfig.endpoints.folderTree}?${params}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch folder tree for root: ${modelRoot}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching folder tree:', error);
+            throw error;
+        }
+    }
+
+    async downloadModel(modelId, versionId, modelRoot, relativePath, useDefaultPaths = false, downloadId, source = null, fileParams = null) {
+        try {
+            const response = await fetch(DOWNLOAD_ENDPOINTS.download, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model_id: modelId,
+                    model_version_id: versionId,
+                    model_root: modelRoot,
+                    relative_path: relativePath,
+                    use_default_paths: useDefaultPaths,
+                    download_id: downloadId,
+                    ...(source ? { source } : {}),
+                    ...(fileParams ? { file_params: fileParams } : {})
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error downloading model:', error);
+            throw error;
+        }
+    }
+
+    _buildQueryParams(baseParams, pageState) {
+        const params = new URLSearchParams(baseParams);
+        const isExcludedView = pageState.viewMode === 'excluded';
+
+        if (!isExcludedView && pageState.activeFolder !== null) {
+            params.append('folder', pageState.activeFolder);
+        }
+
+        if (!isExcludedView && pageState.showFavoritesOnly) {
+            params.append('favorites_only', 'true');
+        }
+
+        if (!isExcludedView && pageState.showUpdateAvailableOnly) {
+            params.append('update_available_only', 'true');
+        }
+
+        if (!isExcludedView && this.apiConfig.config.supportsLetterFilter && pageState.activeLetterFilter) {
+            params.append('first_letter', pageState.activeLetterFilter);
+        }
+
+        if (pageState.filters?.search) {
+            params.append('search', pageState.filters.search);
+            params.append('fuzzy', 'true');
+
+            if (pageState.searchOptions) {
+                params.append('search_filename', pageState.searchOptions.filename.toString());
+                params.append('search_modelname', pageState.searchOptions.modelname.toString());
+                if (pageState.searchOptions.tags !== undefined) {
+                    params.append('search_tags', pageState.searchOptions.tags.toString());
+                }
+                if (pageState.searchOptions.creator !== undefined) {
+                    params.append('search_creator', pageState.searchOptions.creator.toString());
+                }
+            }
+        }
+
+        params.append('recursive', pageState.searchOptions.recursive ? 'true' : 'false');
+
+        // Pass group-by-model mode to backend (skip when showing all versions of a specific model)
+        const vlmModelId = getSessionItem('vlm_model_id');
+        if (state.global.settings.group_by_model && !vlmModelId) {
+            params.append('group_by_model', 'true');
+        }
+
+        if (!isExcludedView && pageState.filters) {
+            if (pageState.filters.tags && Object.keys(pageState.filters.tags).length > 0) {
+                Object.entries(pageState.filters.tags).forEach(([tag, state]) => {
+                    if (state === 'include') {
+                        params.append('tag_include', tag);
+                    } else if (state === 'exclude') {
+                        params.append('tag_exclude', tag);
+                    }
+                });
+            }
+
+            if (pageState.filters.autoTags && Object.keys(pageState.filters.autoTags).length > 0) {
+                Object.entries(pageState.filters.autoTags).forEach(([tag, state]) => {
+                    if (state === 'include') {
+                        params.append('auto_tag_include', tag);
+                    } else if (state === 'exclude') {
+                        params.append('auto_tag_exclude', tag);
+                    }
+                });
+            }
+
+            if (pageState.filters.baseModel && pageState.filters.baseModel.length > 0) {
+                // Check for empty wildcard marker - if present, no models should match
+                const EMPTY_WILDCARD_MARKER = '__EMPTY_WILDCARD_RESULT__';
+                if (pageState.filters.baseModel.length === 1 && 
+                    pageState.filters.baseModel[0] === EMPTY_WILDCARD_MARKER) {
+                    // Wildcard resolved to no matches - return empty results
+                    return null;  // Signal to return empty results
+                }
+                pageState.filters.baseModel.forEach(model => {
+                    params.append('base_model', model);
+                });
+            }
+
+            // Add license filters
+            if (pageState.filters.license) {
+                const licenseFilters = pageState.filters.license;
+
+                if (licenseFilters.noCredit) {
+                    // For noCredit filter: 
+                    // - 'include' means credit_required=False (no credit required)
+                    // - 'exclude' means credit_required=True (credit required)
+                    if (licenseFilters.noCredit === 'include') {
+                        params.append('credit_required', 'false');
+                    } else if (licenseFilters.noCredit === 'exclude') {
+                        params.append('credit_required', 'true');
+                    }
+                }
+
+                if (licenseFilters.allowSelling) {
+                    // For allowSelling filter:
+                    // - 'include' means allow_selling_generated_content=True
+                    // - 'exclude' means allow_selling_generated_content=False
+                    if (licenseFilters.allowSelling === 'include') {
+                        params.append('allow_selling_generated_content', 'true');
+                    } else if (licenseFilters.allowSelling === 'exclude') {
+                        params.append('allow_selling_generated_content', 'false');
+                    }
+                }
+            }
+
+            if (pageState.filters.modelTypes && pageState.filters.modelTypes.length > 0) {
+                pageState.filters.modelTypes.forEach((type) => {
+                    params.append('model_type', type);
+                });
+            }
+
+            // Add tag logic parameter (any = OR, all = AND)
+            if (pageState.filters.tagLogic) {
+                params.append('tag_logic', pageState.filters.tagLogic);
+            }
+        }
+
+        if (!isExcludedView) {
+            this._addModelSpecificParams(params, pageState);
+        }
+
+        return params;
+    }
+
+    _addModelSpecificParams(params, pageState) {
+        // Check for View Local Versions filter (takes priority over recipe filters)
+        const vlmModelId = getSessionItem('vlm_model_id');
+        const vlmPageType = getSessionItem('vlm_page_type');
+        if (vlmModelId && vlmPageType === this.modelType) {
+            params.append('civitai_model_id', vlmModelId);
+            const vlmBaseModel = getSessionItem('vlm_base_model');
+            if (vlmBaseModel) {
+                params.append('base_model', vlmBaseModel);
+            }
+            return;
+        } else if (vlmModelId && vlmPageType !== this.modelType) {
+            // Stale VLM data from a different page type — clean up
+            removeSessionItem('vlm_model_id');
+            removeSessionItem('vlm_model_name');
+            removeSessionItem('vlm_base_model');
+            removeSessionItem('vlm_page_type');
+        }
+
+        if (this.modelType === 'loras') {
+            const filterLoraHash = getSessionItem('recipe_to_lora_filterLoraHash');
+            const filterLoraHashes = getSessionItem('recipe_to_lora_filterLoraHashes');
+
+            if (filterLoraHash) {
+                params.append('lora_hash', filterLoraHash);
+            } else if (filterLoraHashes) {
+                try {
+                    if (Array.isArray(filterLoraHashes) && filterLoraHashes.length > 0) {
+                        params.append('lora_hashes', filterLoraHashes.join(','));
+                    }
+                } catch (error) {
+                    console.error('Error parsing lora hashes from session storage:', error);
+                }
+            }
+        } else if (this.modelType === 'checkpoints') {
+            const filterCheckpointHash = getSessionItem('recipe_to_checkpoint_filterHash');
+            const filterCheckpointHashes = getSessionItem('recipe_to_checkpoint_filterHashes');
+
+            if (filterCheckpointHash) {
+                params.append('checkpoint_hash', filterCheckpointHash);
+            } else if (filterCheckpointHashes) {
+                try {
+                    if (Array.isArray(filterCheckpointHashes) && filterCheckpointHashes.length > 0) {
+                        params.append('checkpoint_hashes', filterCheckpointHashes.join(','));
+                    }
+                } catch (error) {
+                    console.error('Error parsing checkpoint hashes from session storage:', error);
+                }
+            }
+        }
+    }
+
+    async moveSingleModel(filePath, targetPath, useDefaultPaths = false) {
+        // Only allow move if supported
+        if (!this.apiConfig.config.supportsMove) {
+            showToast('toast.api.moveNotSupported', { type: this.apiConfig.config.displayName }, 'warning');
+            return null;
+        }
+        if (filePath.substring(0, filePath.lastIndexOf('/')) === targetPath && !useDefaultPaths) {
+            showToast('toast.api.alreadyInFolder', { type: this.apiConfig.config.displayName }, 'info');
+            return null;
+        }
+
+        const response = await fetch(this.apiConfig.endpoints.moveModel, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                file_path: filePath,
+                target_path: targetPath,
+                use_default_paths: useDefaultPaths
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            if (result && result.error) {
+                throw new Error(result.error);
+            }
+            throw new Error(`Failed to move ${this.apiConfig.config.displayName}`);
+        }
+
+        if (result && result.message) {
+            showToast('toast.api.moveInfo', { message: result.message }, 'info');
+        } else {
+            showToast('toast.api.moveSuccess', { type: this.apiConfig.config.displayName }, 'success');
+        }
+
+        if (result.success) {
+            return {
+                original_file_path: result.original_file_path || filePath,
+                new_file_path: result.new_file_path,
+                cache_entry: result.cache_entry
+            };
+        }
+        return null;
+    }
+
+    async moveBulkModels(filePaths, targetPath, useDefaultPaths = false) {
+        if (!this.apiConfig.config.supportsMove) {
+            showToast('toast.api.bulkMoveNotSupported', { type: this.apiConfig.config.displayName }, 'warning');
+            return [];
+        }
+        const movedPaths = useDefaultPaths ? filePaths : filePaths.filter(path => {
+            return path.substring(0, path.lastIndexOf('/')) !== targetPath;
+        });
+
+        if (movedPaths.length === 0) {
+            showToast('toast.api.allAlreadyInFolder', { type: this.apiConfig.config.displayName }, 'info');
+            return [];
+        }
+
+        const response = await fetch(this.apiConfig.endpoints.moveBulk, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                file_paths: movedPaths,
+                target_path: targetPath,
+                use_default_paths: useDefaultPaths
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(`Failed to move ${this.apiConfig.config.displayName}s`);
+        }
+
+        if (result.success) {
+            if (result.failure_count > 0) {
+                showToast('toast.api.bulkMovePartial', {
+                    successCount: result.success_count,
+                    type: this.apiConfig.config.displayName,
+                    failureCount: result.failure_count
+                }, 'warning');
+                console.log('Move operation results:', result.results);
+                const failedFiles = result.results
+                    .filter(r => !r.success)
+                    .map(r => {
+                        const fileName = r.original_file_path.substring(r.original_file_path.lastIndexOf('/') + 1);
+                        return `${fileName}: ${r.message}`;
+                    });
+                if (failedFiles.length > 0) {
+                    const failureMessage = failedFiles.length <= 3
+                        ? failedFiles.join('\n')
+                        : failedFiles.slice(0, 3).join('\n') + `\n(and ${failedFiles.length - 3} more)`;
+                    showToast('toast.api.bulkMoveFailures', { failures: failureMessage }, 'warning', 6000);
+                }
+            } else {
+                showToast('toast.api.bulkMoveSuccess', {
+                    successCount: result.success_count,
+                    type: this.apiConfig.config.displayName
+                }, 'success');
+            }
+
+            // Return the results array with original_file_path and new_file_path
+            return result.results || [];
+        } else {
+            throw new Error(result.message || `Failed to move ${this.apiConfig.config.displayName}s`);
+        }
+    }
+
+    async bulkDeleteModels(filePaths) {
+        if (!filePaths || filePaths.length === 0) {
+            throw new Error('No file paths provided');
+        }
+
+        const abortController = new AbortController();
+
+        try {
+            state.loadingManager.showSimpleLoading(`Deleting ${this.apiConfig.config.displayName.toLowerCase()}s...`);
+            state.loadingManager.showCancelButton(() => {
+                this.cancelTask();
+                abortController.abort();
+            });
+
+            const response = await fetch(this.apiConfig.endpoints.bulkDelete, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                signal: abortController.signal,
+                body: JSON.stringify({
+                    file_paths: filePaths
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to delete ${this.apiConfig.config.displayName.toLowerCase()}s: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                return {
+                    success: true,
+                    deleted_count: result.deleted_count,
+                    failed_count: result.failed_count || 0,
+                    errors: result.errors || []
+                };
+            } else {
+                throw new Error(result.error || `Failed to delete ${this.apiConfig.config.displayName.toLowerCase()}s`);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log(`Bulk delete cancelled by user for ${this.apiConfig.config.displayName.toLowerCase()}s`);
+                return { success: false, cancelled: true };
+            }
+            console.error(`Error during bulk delete of ${this.apiConfig.config.displayName.toLowerCase()}s:`, error);
+            throw error;
+        } finally {
+            state.loadingManager.hide();
+        }
+    }
+
+    async downloadExampleImages(modelHashes, modelTypes = null) {
+        let ws = null;
+
+        await state.loadingManager.showWithProgress(async (loading) => {
+            loading.showCancelButton(() => this.stopExampleImages());
+            try {
+                // Connect to WebSocket for progress updates
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                ws = new WebSocket(`${wsProtocol}${window.location.host}${WS_ENDPOINTS.fetchProgress}`);
+
+                const operationComplete = new Promise((resolve, reject) => {
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+
+                        if (data.type !== 'example_images_progress') return;
+
+                        switch (data.status) {
+                            case 'running':
+                                const percent = ((data.processed / data.total) * 100).toFixed(1);
+                                loading.setProgress(percent);
+                                loading.setStatus(
+                                    `Processing (${data.processed}/${data.total}) ${data.current_model || ''}`
+                                );
+                                break;
+
+                            case 'completed':
+                                loading.setProgress(100);
+                                loading.setStatus(
+                                    `Completed: Downloaded example images for ${data.processed} models`
+                                );
+                                resolve();
+                                break;
+
+                            case 'error':
+                                reject(new Error(data.error));
+                                break;
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        reject(new Error('WebSocket error: ' + error.message));
+                    };
+                });
+
+                // Wait for WebSocket connection to establish
+                await new Promise((resolve, reject) => {
+                    ws.onopen = resolve;
+                    ws.onerror = reject;
+                });
+
+                // Get the output directory from state
+                const outputDir = state.global?.settings?.example_images_path || '';
+                if (!outputDir) {
+                    throw new Error('Please set the example images path in the settings first.');
+                }
+
+                // Determine optimize setting
+                const optimize = state.global?.settings?.optimize_example_images ?? true;
+
+                // Make the API request to start the download process
+                const response = await fetch(DOWNLOAD_ENDPOINTS.exampleImages, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model_hashes: modelHashes,
+                        output_dir: outputDir,
+                        optimize: optimize,
+                        model_types: modelTypes || [this.apiConfig.config.singularName]
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Failed to download example images');
+                }
+
+                // Wait for the operation to complete via WebSocket
+                await operationComplete;
+
+                showToast('toast.api.exampleImagesDownloadSuccess', {}, 'success');
+                return true;
+
+            } catch (error) {
+                console.error('Error downloading example images:', error);
+                showToast('toast.api.exampleImagesDownloadFailed', { message: error.message }, 'error');
+                throw error;
+            } finally {
+                if (ws) {
+                    ws.close();
+                }
+            }
+        }, {
+            initialMessage: 'Starting example images download...',
+            completionMessage: 'Example images download complete'
+        });
+    }
+
+    async fetchModelMetadata(filePath) {
+        try {
+            const params = new URLSearchParams({ file_path: filePath });
+            const response = await fetch(`${this.apiConfig.endpoints.metadata}?${params}`);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${this.apiConfig.config.singularName} metadata: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                return data.metadata;
+            } else {
+                throw new Error(data.error || `No metadata found for ${this.apiConfig.config.singularName}`);
+            }
+        } catch (error) {
+            console.error(`Error fetching ${this.apiConfig.config.singularName} metadata:`, error);
+            throw error;
+        }
+    }
+
+    async fetchModelDescription(filePath) {
+        try {
+            const params = new URLSearchParams({ file_path: filePath });
+            const response = await fetch(`${this.apiConfig.endpoints.modelDescription}?${params}`);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${this.apiConfig.config.singularName} description: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                return data.description;
+            } else {
+                throw new Error(data.error || `No description found for ${this.apiConfig.config.singularName}`);
+            }
+        } catch (error) {
+            console.error(`Error fetching ${this.apiConfig.config.singularName} description:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Auto-organize models based on current path template settings
+     * @param {Array} filePaths - Optional array of file paths to organize. If not provided, organizes all models.
+     * @returns {Promise} - Promise that resolves when the operation is complete
+     */
+    async autoOrganizeModels(filePaths = null) {
+        let ws = null;
+
+        await state.loadingManager.showWithProgress(async (loading) => {
+            loading.showCancelButton(() => this.cancelTask());
+            try {
+                // Connect to WebSocket for progress updates
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                ws = new WebSocket(`${wsProtocol}${window.location.host}${WS_ENDPOINTS.fetchProgress}`);
+
+                const operationComplete = new Promise((resolve, reject) => {
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+
+                        if (data.type !== 'auto_organize_progress') return;
+
+                        switch (data.status) {
+                            case 'started':
+                                loading.setProgress(0);
+                                const operationType = data.operation_type === 'bulk' ? 'selected models' : 'all models';
+                                loading.setStatus(translate('loras.bulkOperations.autoOrganizeProgress.starting', { type: operationType }, `Starting auto-organize for ${operationType}...`));
+                                break;
+
+                            case 'processing':
+                                const percent = data.total > 0 ? ((data.processed / data.total) * 90).toFixed(1) : 0;
+                                loading.setProgress(percent);
+                                loading.setStatus(
+                                    translate('loras.bulkOperations.autoOrganizeProgress.processing', {
+                                        processed: data.processed,
+                                        total: data.total,
+                                        success: data.success,
+                                        failures: data.failures,
+                                        skipped: data.skipped
+                                    }, `Processing (${data.processed}/${data.total}) - ${data.success} moved, ${data.skipped} skipped, ${data.failures} failed`)
+                                );
+                                break;
+
+                            case 'cleaning':
+                                loading.setProgress(95);
+                                loading.setStatus(translate('loras.bulkOperations.autoOrganizeProgress.cleaning', {}, 'Cleaning up empty directories...'));
+                                break;
+
+                            case 'completed':
+                                loading.setProgress(100);
+                                loading.setStatus(
+                                    translate('loras.bulkOperations.autoOrganizeProgress.completed', {
+                                        success: data.success,
+                                        skipped: data.skipped,
+                                        failures: data.failures,
+                                        total: data.total
+                                    }, `Completed: ${data.success} moved, ${data.skipped} skipped, ${data.failures} failed`)
+                                );
+
+                                setTimeout(() => {
+                                    resolve(data);
+                                }, 1500);
+                                break;
+
+                            case 'cancelled':
+                                loading.setStatus(translate('toast.api.operationCancelled', {}, 'Operation cancelled by user'));
+                                resolve(data);
+                                break;
+
+                            case 'error':
+                                loading.setStatus(translate('loras.bulkOperations.autoOrganizeProgress.error', { error: data.error }, `Error: ${data.error}`));
+                                reject(new Error(data.error));
+                                break;
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('WebSocket error during auto-organize:', error);
+                        reject(new Error('Connection error'));
+                    };
+                });
+
+                // Start the auto-organize operation
+                const endpoint = this.apiConfig.endpoints.autoOrganize;
+                const exclusionPatterns = (state.global.settings.auto_organize_exclusions || [])
+                    .filter(pattern => typeof pattern === 'string' && pattern.trim())
+                    .map(pattern => pattern.trim());
+
+                const requestBody = {};
+                if (filePaths) {
+                    requestBody.file_paths = filePaths;
+                }
+                if (exclusionPatterns.length > 0) {
+                    requestBody.exclusion_patterns = exclusionPatterns;
+                }
+
+                const requestOptions = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                };
+
+                const response = await fetch(endpoint, requestOptions);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Failed to start auto-organize operation');
+                }
+
+                // Wait for the operation to complete via WebSocket
+                const result = await operationComplete;
+
+                // Show appropriate success message based on results
+                if (result.status === 'cancelled') {
+                    showToast('toast.api.operationCancelledPartial', { success: result.success, total: result.total }, 'info');
+                } else if (result.failures === 0) {
+                    showToast('toast.loras.autoOrganizeSuccess', {
+                        count: result.success,
+                        type: result.operation_type === 'bulk' ? 'selected models' : 'all models'
+                    }, 'success');
+                } else {
+                    showToast('toast.loras.autoOrganizePartialSuccess', {
+                        success: result.success,
+                        failures: result.failures,
+                        total: result.total
+                    }, 'warning');
+                }
+
+            } catch (error) {
+                console.error('Error during auto-organize:', error);
+                showToast('toast.loras.autoOrganizeFailed', { error: error.message }, 'error');
+                throw error;
+            } finally {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close();
+                }
+            }
+        }, {
+            initialMessage: translate('loras.bulkOperations.autoOrganizeProgress.initializing', {}, 'Initializing auto-organize...'),
+            completionMessage: translate('loras.bulkOperations.autoOrganizeProgress.complete', {}, 'Auto-organize complete')
+        });
+    }
+
+    async stopExampleImages() {
+        try {
+            const response = await fetch('/api/lm/stop-example-images', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error stopping example images:', error);
+            return false;
+        }
+    }
+}

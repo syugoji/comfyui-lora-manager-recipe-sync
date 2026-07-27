@@ -1,0 +1,750 @@
+/* Shared styling for the LoRA Manager frontend widgets */
+.lm-tooltip {
+  position: fixed;
+  z-index: 10001;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: none;
+  overflow: hidden;
+  max-width: 300px;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.lm-tooltip__media-container {
+  position: relative;
+  max-width: 300px;
+  max-height: 300px;
+}
+
+.lm-tooltip__media {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  display: block;
+}
+
+.lm-tooltip__label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  color: white;
+  font-size: 13px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  text-align: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  line-height: 1.4;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lm-tooltip__license-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(10, 10, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-width: calc(100% - 16px);
+}
+
+.lm-tooltip__license-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  background-color: rgba(255, 255, 255, 0.9);
+  -webkit-mask: var(--license-icon-image) center/contain no-repeat;
+  mask: var(--license-icon-image) center/contain no-repeat;
+}
+
+/* Set 2 — new style license overlay */
+.lm-tooltip__license-overlay-new {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(10, 10, 14, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-width: calc(100% - 16px);
+}
+
+.lm-tooltip__license-icon-new {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  border-radius: 3px;
+  -webkit-mask: var(--license-icon-image) center/contain no-repeat;
+  mask: var(--license-icon-image) center/contain no-repeat;
+}
+
+.lm-tooltip__license-icon-new.allowed {
+  background-color: #40c057;
+}
+
+.lm-tooltip__license-icon-new.denied {
+  background-color: #fa5252;
+}
+
+.lm-loras-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  background-color: rgba(40, 44, 52, 0.6);
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  outline: none;
+}
+
+.lm-loras-container:focus {
+  outline: none;
+}
+
+.lm-lora-empty-state {
+  text-align: center;
+  padding: 20px 0;
+  color: rgba(226, 232, 240, 0.8);
+  font-style: italic;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  width: 100%;
+}
+
+.lm-loras-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.2);
+  margin-bottom: 5px;
+  position: relative;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.lm-toggle-container {
+  display: flex;
+  align-items: center;
+}
+
+.lm-toggle-label,
+.lm-strength-label {
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.lm-toggle-label {
+  margin-left: 8px;
+}
+
+.lm-strength-label {
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.lm-drag-hint {
+  margin-left: 5px;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.lm-loras-header:hover .lm-drag-hint {
+  opacity: 1;
+}
+
+.lm-lora-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  background-color: rgba(45, 55, 72, 0.7);
+  touch-action: none;
+  cursor: pointer !important;
+}
+
+.lm-lora-entry[data-active="false"] {
+  background-color: rgba(35, 40, 50, 0.5);
+}
+
+.lm-lora-entry:hover {
+  background-color: rgba(50, 60, 80, 0.8);
+}
+
+.lm-lora-entry[data-active="false"]:hover {
+  background-color: rgba(40, 45, 55, 0.6);
+}
+
+.lm-lora-entry[data-selected="true"] {
+  background-color: rgba(66, 153, 225, 0.3) !important;
+  border: 1px solid rgba(66, 153, 225, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(66, 153, 225, 0.3) !important;
+}
+
+.lm-lora-entry[data-selected="true"][data-locked="true"] {
+  background-color: rgba(66, 153, 225, 0.2) !important;
+  border-left: 3px solid rgba(245, 158, 11, 0.8) !important;
+  border-right: 1px solid rgba(66, 153, 225, 0.6) !important;
+  border-top: 1px solid rgba(66, 153, 225, 0.6) !important;
+  border-bottom: 1px solid rgba(66, 153, 225, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(66, 153, 225, 0.3), inset 0 0 20px rgba(245, 158, 11, 0.04) !important;
+}
+
+.lm-lora-entry[data-selected="true"][data-locked="true"][data-active="false"] {
+  background-color: rgba(48, 42, 36, 0.5) !important;
+  border-left: 3px solid rgba(245, 158, 11, 0.6) !important;
+}
+
+.lm-lora-name {
+  margin-left: 4px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.lm-lora-entry[data-active="false"] .lm-lora-name {
+  color: rgba(226, 232, 240, 0.6);
+}
+
+.lm-lora-strength-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lm-lora-strength-input {
+  width: 50px;
+  min-width: 50px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  background: rgba(26, 32, 44, 0.9);
+  color: rgba(226, 232, 240, 0.9);
+  text-align: center;
+  font-size: 13px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lm-lora-strength-input:focus {
+  outline: none;
+  border-color: rgba(66, 153, 225, 0.9);
+  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.3);
+}
+
+.lm-lora-strength-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lm-lora-entry[data-active="false"] .lm-lora-strength-input {
+  color: rgba(226, 232, 240, 0.6);
+}
+
+.lm-lora-arrow {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  color: rgba(226, 232, 240, 0.8);
+  transition: all 0.2s ease;
+}
+
+.lm-lora-arrow:hover {
+  color: white;
+  transform: scale(1.2);
+}
+
+.lm-lora-arrow svg {
+  width: 12px;
+  height: 12px;
+}
+
+.lm-lora-expand-button {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  color: rgba(226, 232, 240, 0.7);
+  background-color: rgba(45, 55, 72, 0.3);
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.lm-lora-expand-button:hover {
+  background-color: rgba(66, 153, 225, 0.2);
+  border-color: rgba(66, 153, 225, 0.4);
+  color: rgba(226, 232, 240, 0.9);
+  transform: scale(1.05);
+}
+
+.lm-lora-expand-button:active {
+  transform: scale(0.95);
+  background-color: rgba(66, 153, 225, 0.3);
+}
+
+.lm-lora-expand-button:focus {
+  outline: none;
+}
+
+.lm-lora-expand-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.5);
+}
+
+.lm-lora-toggle {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: rgba(45, 55, 72, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.2);
+}
+
+.lm-lora-toggle--active {
+  background-color: rgba(66, 153, 225, 0.9);
+  border-color: rgba(66, 153, 225, 0.9);
+}
+
+.lm-lora-toggle:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.lm-lora-drag-handle {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  color: rgba(226, 232, 240, 0.6);
+  transition: all 0.2s ease;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.lm-lora-drag-handle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.lm-lora-drag-handle:hover {
+  color: rgba(226, 232, 240, 0.9);
+  transform: scale(1.1);
+}
+
+.lm-lora-drag-handle:active {
+  cursor: grabbing;
+}
+
+.lm-lora-lock-button {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  background-color: rgba(45, 55, 72, 0.3);
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+  box-sizing: border-box;
+  margin-right: 8px;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.lm-lora-lock-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.lm-lora-lock-button:hover {
+  background-color: rgba(66, 153, 225, 0.2);
+  border-color: rgba(66, 153, 225, 0.4);
+  color: rgba(226, 232, 240, 0.95);
+  transform: scale(1.05);
+}
+
+.lm-lora-lock-button:active {
+  transform: scale(0.95);
+}
+
+.lm-lora-lock-button:focus {
+  outline: none;
+}
+
+.lm-lora-lock-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.5);
+}
+
+.lm-lora-lock-button--locked {
+  background-color: rgba(245, 158, 11, 0.25);
+  border-color: rgba(245, 158, 11, 0.7);
+  color: rgba(251, 191, 36, 0.95);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.15);
+}
+
+.lm-lora-lock-button--locked:hover {
+  background-color: rgba(245, 158, 11, 0.35);
+  border-color: rgba(245, 158, 11, 0.85);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+}
+
+/* Visual styling for locked lora entries */
+.lm-lora-entry[data-locked="true"] {
+  background-color: rgba(60, 50, 40, 0.75);
+  border-left: 3px solid rgba(245, 158, 11, 0.7);
+  box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.04);
+}
+
+.lm-lora-entry[data-locked="true"]:hover {
+  background-color: rgba(65, 55, 45, 0.85);
+  box-shadow: inset 0 0 24px rgba(245, 158, 11, 0.06);
+}
+
+.lm-lora-entry[data-locked="true"][data-active="false"] {
+  background-color: rgba(48, 42, 36, 0.6);
+  border-left: 3px solid rgba(245, 158, 11, 0.5);
+}
+
+.lm-lora-entry[data-locked="true"][data-active="false"]:hover {
+  background-color: rgba(52, 46, 40, 0.7);
+}
+
+body.lm-lora-strength-dragging,
+body.lm-lora-strength-dragging * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
+body.lm-lora-reordering,
+body.lm-lora-reordering * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.lm-lora-entry--dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.lm-lora-drop-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: rgba(66, 153, 225, 0.9);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 0 6px rgba(66, 153, 225, 0.8);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.lm-lora-strength-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lm-lora-entry-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
+.lm-lora-clip-entry {
+  margin-left: 10px;
+  margin-bottom: 4px;
+  padding: 6px;
+  padding-left: 20px;
+  border-radius: 6px;
+  background-color: rgba(65, 70, 90, 0.6);
+  border: 1px solid rgba(66, 153, 225, 0.2);
+  border-left: 2px solid rgba(72, 118, 255, 0.6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+  margin-top: -2px;
+  touch-action: none;
+  cursor: pointer !important;
+}
+
+.lm-lora-clip-entry[data-active="false"] {
+  background-color: rgba(50, 55, 65, 0.5);
+  border-color: rgba(66, 153, 225, 0.1);
+  border-left-color: rgba(66, 153, 225, 0.3);
+}
+
+.lm-lora-clip-entry:hover {
+  background-color: rgba(70, 75, 95, 0.7);
+}
+
+.lm-lora-clip-entry[data-active="false"]:hover {
+  background-color: rgba(55, 60, 70, 0.6);
+}
+
+.lm-lora-clip-entry .lm-lora-name {
+  font-size: 13px;
+  color: rgba(200, 215, 240, 0.9);
+  margin-left: 0;
+}
+
+.lm-lora-clip-entry[data-active="false"] .lm-lora-name {
+  color: rgba(200, 215, 240, 0.6);
+}
+
+.lm-lora-clip-entry .lm-lora-strength-input {
+  color: rgba(200, 215, 240, 0.9);
+}
+
+.lm-lora-clip-entry[data-active="false"] .lm-lora-strength-input {
+  color: rgba(200, 215, 240, 0.6);
+}
+
+.lm-lora-badge {
+  padding: 2px 6px;
+  border-radius: 12px;
+  background: rgba(66, 153, 225, 0.2);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lm-lora-context-menu {
+  position: fixed;
+  background: rgba(26, 32, 44, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  padding: 8px 0;
+  z-index: 10000;
+  min-width: 180px;
+  border: 1px solid rgba(66, 153, 225, 0.3);
+  backdrop-filter: blur(6px);
+}
+
+.lm-lora-menu-item {
+  padding: 6px 20px;
+  cursor: pointer;
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 13px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lm-lora-menu-item:hover {
+  background-color: rgba(66, 153, 225, 0.2);
+}
+
+.lm-lora-menu-item-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lm-lora-context-menu hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin: 6px 0;
+}
+
+.lm-trigger-count-badge {
+  font-variant-numeric: tabular-nums;
+}
+
+.lm-trigger-count-badge--edited {
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.lm-trigger-group-edit-button {
+  transition: opacity 0.18s ease, color 0.18s ease;
+}
+
+.lm-trigger-group-edit-button:hover {
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.lm-trigger-group-editor {
+  background: rgba(26, 32, 44, 0.95);
+  border: 1px solid rgba(66, 153, 225, 0.24);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.lm-trigger-group-editor__title {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.lm-trigger-group-editor__subtitle,
+.lm-trigger-group-editor__empty {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+/* Autocomplete styling */
+.lm-autocomplete-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-autocomplete-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.lm-autocomplete-count {
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.5);
+}
+
+.lm-autocomplete-category {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Category-specific badge colors */
+.lm-autocomplete-category--general {
+  background: rgba(0, 155, 230, 0.2);
+  color: #4bb4ff;
+}
+
+.lm-autocomplete-category--artist {
+  background: rgba(255, 138, 139, 0.2);
+  color: #ffc3c3;
+}
+
+.lm-autocomplete-category--copyright {
+  background: rgba(199, 151, 255, 0.2);
+  color: #ddc9fb;
+}
+
+.lm-autocomplete-category--character {
+  background: rgba(53, 198, 74, 0.2);
+  color: #93e49a;
+}
+
+.lm-autocomplete-category--meta {
+  background: rgba(234, 208, 132, 0.2);
+  color: #f7e7c3;
+}
+
+.lm-autocomplete-category--species {
+  background: rgba(237, 137, 54, 0.2);
+  color: #f6ad55;
+}
+
+.lm-autocomplete-category--lore {
+  background: rgba(72, 187, 120, 0.2);
+  color: #68d391;
+}
+
+/* Command list styling */
+.comfy-autocomplete-command {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.lm-autocomplete-command-name {
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: rgba(66, 153, 225, 0.9);
+}
+
+.lm-autocomplete-command-label {
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.6);
+}
+
+/* ---- Widget flash highlight (visual cue after a value is sent to a node) ---- */
+/* Applied to a widget row element when its value is updated by LoRA Manager.
+   Shifts the value text color to the LM brand accent with a CSS transition
+   for fade-in/fade-out. Removal (timeout / hover) is handled by JS.
+
+   The transition is declared on .lm-flash-host (added alongside .lm-flash)
+   rather than on ComfyUI's .lg-node-widget, so we don't impose a global
+   color transition on every widget input. The host class persists until
+   cleanup so fade-out still applies after .lm-flash is removed. */
+.lm-flash-host input,
+.lm-flash-host textarea,
+.lm-flash-host [role="combobox"] {
+  transition: color 0.25s ease, -webkit-text-fill-color 0.25s ease;
+}
+
+.lm-flash input,
+.lm-flash textarea,
+.lm-flash [role="combobox"] {
+  color: #4299E0 !important;
+  -webkit-text-fill-color: #4299E0 !important;
+}

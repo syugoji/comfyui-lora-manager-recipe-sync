@@ -1,0 +1,964 @@
+import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
+
+const loadMoreWithVirtualScrollMock = vi.fn();
+const refreshModelsMock = vi.fn();
+const fetchCivitaiMetadataMock = vi.fn();
+const resetAndReloadMock = vi.fn();
+const getModelApiClientMock = vi.fn();
+const apiClientMock = {
+  loadMoreWithVirtualScroll: loadMoreWithVirtualScrollMock,
+  refreshModels: refreshModelsMock,
+  fetchCivitaiMetadata: fetchCivitaiMetadataMock,
+};
+
+const showToastMock = vi.fn();
+const openCivitaiByMetadataMock = vi.fn();
+const updatePanelPositionsMock = vi.fn();
+const downloadManagerMock = {
+  showDownloadModal: vi.fn(),
+};
+
+const sidebarManagerMock = {
+  setHostPageControls: vi.fn(),
+  initialize: vi.fn(async () => {
+    sidebarManagerMock.isInitialized = true;
+  }),
+  refresh: vi.fn(async () => {}),
+  cleanup: vi.fn(),
+  isInitialized: false,
+};
+
+const createAlphabetBarMock = vi.fn(() => ({ destroy: vi.fn() }));
+
+const performModelUpdateCheckMock = vi.fn();
+
+getModelApiClientMock.mockReturnValue(apiClientMock);
+
+vi.mock('../../../static/js/api/modelApiFactory.js', () => ({
+  getModelApiClient: getModelApiClientMock,
+  resetAndReload: resetAndReloadMock,
+}));
+
+vi.mock('../../../static/js/utils/uiHelpers.js', () => ({
+  showToast: showToastMock,
+  openCivitaiByMetadata: openCivitaiByMetadataMock,
+  updatePanelPositions: updatePanelPositionsMock,
+}));
+
+vi.mock('../../../static/js/managers/DownloadManager.js', () => ({
+  downloadManager: downloadManagerMock,
+}));
+
+vi.mock('../../../static/js/components/SidebarManager.js', () => ({
+  sidebarManager: sidebarManagerMock,
+}));
+
+vi.mock('../../../static/js/components/alphabet/index.js', () => ({
+  createAlphabetBar: createAlphabetBarMock,
+}));
+
+vi.mock('../../../static/js/utils/updateCheckHelpers.js', () => ({
+  performModelUpdateCheck: performModelUpdateCheckMock,
+}));
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.clearAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
+
+  loadMoreWithVirtualScrollMock.mockResolvedValue(undefined);
+  refreshModelsMock.mockResolvedValue(undefined);
+  fetchCivitaiMetadataMock.mockResolvedValue(undefined);
+  resetAndReloadMock.mockResolvedValue(undefined);
+  getModelApiClientMock.mockReturnValue(apiClientMock);
+  performModelUpdateCheckMock.mockResolvedValue({ status: 'success', displayName: 'LoRA', records: [] });
+
+  sidebarManagerMock.isInitialized = false;
+
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ success: true, base_models: [] }),
+  });
+});
+
+afterEach(() => {
+  delete window.bulkManager;
+  delete window.modelDuplicatesManager;
+  delete global.fetch;
+  vi.useRealTimers();
+});
+
+function renderControlsDom(pageKey) {
+  document.body.dataset.page = pageKey;
+  document.body.innerHTML = `
+    <div class="header-search">
+      <div class="search-container">
+        <input id="searchInput" />
+        <i class="fas fa-search search-icon"></i>
+        <span class="search-shortcut-cue" id="searchShortcutCue"><kbd>Ctrl</kbd><kbd>F</kbd></span>
+        <button id="searchOptionsToggle" class="search-options-toggle"></button>
+        <button id="filterButton" class="search-filter-toggle">
+          <span id="activeFiltersCount" class="filter-badge" style="display: none">0</span>
+        </button>
+      </div>
+    </div>
+    <div id="searchOptionsPanel" class="search-options-panel hidden">
+      <button id="closeSearchOptions"></button>
+      <div class="search-option-tag active" data-option="filename"></div>
+    </div>
+    <div id="filterPanel" class="filter-panel hidden">
+      <input id="baseModelSearchInput" />
+      <div id="baseModelTags" class="filter-tags"></div>
+      <div id="baseModelEmptyState" hidden></div>
+      <div id="filterPresets" class="filter-presets"></div>
+      <div id="modelTagsFilter" class="filter-tags"></div>
+      <button class="clear-filter"></button>
+    </div>
+    <div class="controls">
+      <div id="excludedViewBanner" class="excluded-view-banner hidden">
+        <button id="excludedViewBackBtn">Back</button>
+      </div>
+      <div class="actions">
+        <div class="action-buttons">
+          <div class="control-group">
+            <select id="sortSelect">
+              <option value="name:asc">Name Asc</option>
+              <option value="name:desc">Name Desc</option>
+              <option value="date:desc">Date Desc</option>
+              <option value="date:asc">Date Asc</option>
+            </select>
+          </div>
+          <div class="control-group dropdown-group">
+            <button data-action="refresh" class="dropdown-main"></button>
+            <button class="dropdown-toggle"></button>
+            <div class="dropdown-menu">
+              <div class="dropdown-item" data-action="full-rebuild"></div>
+            </div>
+          </div>
+          <div class="control-group">
+            <button data-action="fetch"></button>
+          </div>
+          <div class="control-group">
+            <button data-action="download"></button>
+          </div>
+          <div class="control-group">
+            <button data-action="bulk"></button>
+          </div>
+          <div class="control-group">
+            <button data-action="find-duplicates"></button>
+          </div>
+          <div class="control-group">
+            <button id="favoriteFilterBtn" class="favorite-filter"></button>
+          </div>
+          <div class="control-group dropdown-group update-filter-group">
+            <button id="updateFilterBtn" class="dropdown-main update-filter" aria-busy="false">
+              <i class="fas fa-exclamation-circle"></i>
+              <span>Updates</span>
+            </button>
+            <button id="updateFilterMenuToggle" class="dropdown-toggle">
+              <i class="fas fa-caret-down"></i>
+            </button>
+            <div class="dropdown-menu">
+              <div id="checkUpdatesMenuItem" class="dropdown-item" data-action="check-updates">
+                <i class="fas fa-sync-alt"></i>
+                <span>Check updates</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="customFilterIndicator" class="control-group hidden">
+      <div class="filter-active">
+        <i class="fas fa-filter"></i>
+        <span class="customFilterText" title=""></span>
+        <i class="fas fa-times-circle clear-filter"></i>
+      </div>
+    </div>
+    <div id="breadcrumbContainer"></div>
+    <div id="duplicatesBanner" style="display: none;"></div>
+    <div class="alphabet-bar-container"></div>
+  `;
+}
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
+}
+
+describe('SearchManager filtering scenarios', () => {
+  it.each([
+    ['loras'],
+    ['checkpoints'],
+  ])('updates filters and reloads results for %s page', async (pageKey) => {
+    vi.useFakeTimers();
+
+    renderControlsDom(pageKey);
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState(pageKey);
+    const { getCurrentPageState } = stateModule;
+    const { SearchManager } = await import('../../../static/js/managers/SearchManager.js');
+
+    new SearchManager({ page: pageKey, searchDelay: 0 });
+
+    const input = document.getElementById('searchInput');
+    input.value = 'flux';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    await vi.runAllTimersAsync();
+
+    expect(getCurrentPageState().filters.search).toBe('flux');
+    expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledWith(true, false);
+    expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['loras'],
+    ['checkpoints'],
+  ])('toggles clear button and shortcut cue visibility for %s page', async (pageKey) => {
+    vi.useFakeTimers();
+
+    renderControlsDom(pageKey);
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState(pageKey);
+    const { SearchManager } = await import('../../../static/js/managers/SearchManager.js');
+
+    new SearchManager({ page: pageKey, searchDelay: 0 });
+
+    const input = document.getElementById('searchInput');
+    const cue = document.getElementById('searchShortcutCue');
+    const clearBtn = document.querySelector('.search-clear');
+
+    // Initially empty: cue visible, clear hidden
+    expect(cue.classList.contains('hidden')).toBe(false);
+    expect(clearBtn.classList.contains('visible')).toBe(false);
+
+    // Type something: cue hidden, clear visible
+    input.value = 'flux';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(cue.classList.contains('hidden')).toBe(true);
+    expect(clearBtn.classList.contains('visible')).toBe(true);
+
+    // Clear via click: cue visible, clear hidden
+    clearBtn.click();
+    expect(input.value).toBe('');
+    expect(cue.classList.contains('hidden')).toBe(false);
+    expect(clearBtn.classList.contains('visible')).toBe(false);
+  });
+});
+
+describe('FilterManager tag and base model filters', () => {
+  it.each([
+    ['loras'],
+    ['checkpoints'],
+  ])('toggles tag chips and persists filters for %s page', async (pageKey) => {
+    renderControlsDom(pageKey);
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState(pageKey);
+    const { getCurrentPageState } = stateModule;
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    const manager = new FilterManager({ page: pageKey });
+    manager.createTagFilterElements([{ tag: 'style', count: 5 }]);
+
+    const tagChip = document.querySelector('.filter-tag.tag-filter');
+    expect(tagChip).not.toBeNull();
+
+    tagChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+
+    expect(getCurrentPageState().filters.tags).toEqual({ style: 'include' });
+    expect(tagChip.classList.contains('active')).toBe(true);
+    expect(document.getElementById('activeFiltersCount').textContent).toBe('1');
+    expect(document.getElementById('activeFiltersCount').style.display).toBe('inline-flex');
+
+    const storageKey = `lora_manager_${pageKey}_filters`;
+    const storedFilters = JSON.parse(localStorage.getItem(storageKey));
+    expect(storedFilters.tags).toEqual({ style: 'include' });
+
+    loadMoreWithVirtualScrollMock.mockClear();
+
+    tagChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+
+    expect(getCurrentPageState().filters.tags).toEqual({ style: 'exclude' });
+    expect(tagChip.classList.contains('exclude')).toBe(true);
+    expect(tagChip.classList.contains('active')).toBe(false);
+    expect(document.getElementById('activeFiltersCount').textContent).toBe('1');
+
+    loadMoreWithVirtualScrollMock.mockClear();
+
+    tagChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+
+    expect(getCurrentPageState().filters.tags).toEqual({});
+    expect(document.getElementById('activeFiltersCount').style.display).toBe('none');
+  });
+
+  it.each([
+    ['loras'],
+    ['checkpoints'],
+  ])('toggles base model chips and reloads %s results', async (pageKey) => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        base_models: [{ name: 'SDXL', count: 2 }],
+      }),
+    });
+
+    renderControlsDom(pageKey);
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState(pageKey);
+    const { getCurrentPageState } = stateModule;
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    const manager = new FilterManager({ page: pageKey });
+
+    expect(global.fetch).toHaveBeenCalledWith(`/api/lm/${pageKey}/base-models?limit=0`);
+
+    await vi.waitFor(() => {
+      const chip = document.querySelector('[data-base-model="SDXL"]');
+      expect(chip).not.toBeNull();
+    });
+
+    const baseModelChip = document.querySelector('[data-base-model="SDXL"]');
+
+    baseModelChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+
+    expect(getCurrentPageState().filters.baseModel).toEqual(['SDXL']);
+    expect(baseModelChip.classList.contains('active')).toBe(true);
+
+    const storageKey = `lora_manager_${pageKey}_filters`;
+    const storedFilters = JSON.parse(localStorage.getItem(storageKey));
+    expect(storedFilters.baseModel).toEqual(['SDXL']);
+
+    loadMoreWithVirtualScrollMock.mockClear();
+
+    baseModelChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+
+    expect(getCurrentPageState().filters.baseModel).toEqual([]);
+    expect(baseModelChip.classList.contains('active')).toBe(false);
+  });
+
+  it('filters base model chips locally without changing selected state', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        base_models: [
+          { name: 'SDXL', count: 2 },
+          { name: 'LTXV 2.3', count: 1 },
+        ],
+      }),
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { getCurrentPageState } = stateModule;
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    new FilterManager({ page: 'loras' });
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-base-model="LTXV 2.3"]')).not.toBeNull();
+    });
+
+    const searchInput = document.getElementById('baseModelSearchInput');
+    const ltxvChip = document.querySelector('[data-base-model="LTXV 2.3"]');
+    ltxvChip.dispatchEvent(new Event('click', { bubbles: true }));
+    await vi.waitFor(() => expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledTimes(1));
+    expect(getCurrentPageState().filters.baseModel).toEqual(['LTXV 2.3']);
+
+    loadMoreWithVirtualScrollMock.mockClear();
+    searchInput.value = 'sdx';
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(document.querySelector('[data-base-model="SDXL"]')).not.toBeNull();
+    expect(document.querySelector('[data-base-model="LTXV 2.3"]')).toBeNull();
+    expect(document.getElementById('baseModelEmptyState').hidden).toBe(true);
+    expect(getCurrentPageState().filters.baseModel).toEqual(['LTXV 2.3']);
+
+    searchInput.value = 'zzz';
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(document.getElementById('baseModelEmptyState').hidden).toBe(false);
+
+    searchInput.value = 'ltx';
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    const restoredChip = document.querySelector('[data-base-model="LTXV 2.3"]');
+    expect(restoredChip).not.toBeNull();
+    expect(restoredChip.classList.contains('active')).toBe(true);
+  });
+
+  it('disables browser autocomplete helpers for the base model search input', async () => {
+    renderControlsDom('loras');
+
+    const searchInput = document.getElementById('baseModelSearchInput');
+
+    searchInput.setAttribute('autocomplete', 'off');
+    searchInput.setAttribute('autocorrect', 'off');
+    searchInput.setAttribute('autocapitalize', 'none');
+    searchInput.setAttribute('spellcheck', 'false');
+
+    expect(searchInput.getAttribute('autocomplete')).toBe('off');
+    expect(searchInput.getAttribute('autocorrect')).toBe('off');
+    expect(searchInput.getAttribute('autocapitalize')).toBe('none');
+    expect(searchInput.getAttribute('spellcheck')).toBe('false');
+  });
+
+  it('focuses the base model search input when opening the filter panel', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        base_models: [{ name: 'SDXL', count: 2 }],
+      }),
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    const manager = new FilterManager({ page: 'loras' });
+    const searchInput = document.getElementById('baseModelSearchInput');
+
+    expect(document.activeElement).not.toBe(searchInput);
+
+    manager.toggleFilterPanel();
+
+    expect(document.activeElement).toBe(searchInput);
+  });
+
+  it('does not let base model search trigger bulk shortcuts', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        base_models: [{ name: 'SDXL', count: 2 }],
+      }),
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { BulkManager } = await import('../../../static/js/managers/BulkManager.js');
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    const filterManager = new FilterManager({ page: 'loras' });
+    const bulkManager = new BulkManager();
+    const searchInput = document.getElementById('baseModelSearchInput');
+    window.filterManager = filterManager;
+
+    searchInput.focus();
+
+    const bulkEvent = new KeyboardEvent('keydown', {
+      key: 'b',
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(bulkEvent, 'target', { value: searchInput });
+    expect(bulkManager.handleGlobalKeyboard(bulkEvent)).toBe(false);
+
+    const selectAllEvent = new KeyboardEvent('keydown', {
+      key: 'a',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(selectAllEvent, 'target', { value: searchInput });
+    expect(bulkManager.handleGlobalKeyboard(selectAllEvent)).toBe(false);
+  });
+
+  it('closes the filter panel on Escape', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        base_models: [{ name: 'SDXL', count: 2 }],
+      }),
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+    const { eventManager } = await import('../../../static/js/utils/EventManager.js');
+    const { initializeEventManagement } = await import('../../../static/js/utils/eventManagementInit.js');
+
+    eventManager.cleanup();
+    initializeEventManagement();
+
+    const manager = new FilterManager({ page: 'loras' });
+    window.filterManager = manager;
+    manager.toggleFilterPanel();
+    expect(manager.filterPanel.classList.contains('hidden')).toBe(false);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(manager.filterPanel.classList.contains('hidden')).toBe(true);
+    eventManager.cleanup();
+  });
+
+  it('applies all base models from a preset using the full base model list', async () => {
+    global.fetch = vi.fn((url) => {
+      if (url.includes('/base-models?limit=0')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            base_models: [
+              { name: 'SDXL 1.0', count: 5 },
+              { name: 'SDXL Lightning', count: 3 },
+              { name: 'SDXL Hyper', count: 2 },
+            ],
+          }),
+        });
+      }
+
+      if (url.includes('/base-models')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            base_models: [{ name: 'SDXL 1.0', count: 5 }],
+          }),
+        });
+      }
+
+      if (url.includes('/top-tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            tags: [],
+          }),
+        });
+      }
+
+      if (url.includes('/model-types')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            model_types: [],
+          }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    stateModule.state.global.settings.filter_presets = {
+      loras: [
+        {
+          name: 'SDXL Family',
+          filters: {
+            baseModel: ['SDXL 1.0', 'SDXL Lightning', 'SDXL Hyper'],
+            tags: {},
+            license: {},
+            modelTypes: [],
+            tagLogic: 'any',
+          },
+        },
+      ],
+    };
+
+    const { getCurrentPageState } = stateModule;
+    const { FilterManager } = await import('../../../static/js/managers/FilterManager.js');
+
+    const manager = new FilterManager({ page: 'loras' });
+
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-base-model="SDXL Hyper"]')).not.toBeNull();
+    });
+
+    await manager.presetManager.applyPreset('SDXL Family');
+
+    expect(manager.activePreset).toBe('SDXL Family');
+    expect(manager.filters.baseModel).toEqual(['SDXL 1.0', 'SDXL Lightning', 'SDXL Hyper']);
+    expect(getCurrentPageState().filters.baseModel).toEqual(['SDXL 1.0', 'SDXL Lightning', 'SDXL Hyper']);
+    expect(loadMoreWithVirtualScrollMock).toHaveBeenCalledWith(true, false);
+    expect(showToastMock).toHaveBeenCalledWith(
+      'Preset "SDXL Family" applied',
+      {},
+      'success',
+    );
+  });
+
+});
+
+describe('PageControls favorites, sorting, and duplicates scenarios', () => {
+  it('persists favorites toggle for LoRAs and triggers reload', async () => {
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    const controls = new LorasControls();
+
+    await controls.toggleFavoritesOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_favorites_only_loras')).toBe('true');
+    expect(stateModule.getCurrentPageState().showFavoritesOnly).toBe(true);
+    expect(document.getElementById('favoriteFilterBtn').classList.contains('active')).toBe(true);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+
+    resetAndReloadMock.mockClear();
+
+    await controls.toggleFavoritesOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_favorites_only_loras')).toBe('false');
+    expect(stateModule.getCurrentPageState().showFavoritesOnly).toBe(false);
+    expect(document.getElementById('favoriteFilterBtn').classList.contains('active')).toBe(false);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+  });
+
+  it('persists favorites toggle for checkpoints and triggers reload', async () => {
+    renderControlsDom('checkpoints');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('checkpoints');
+    const { CheckpointsControls } = await import('../../../static/js/components/controls/CheckpointsControls.js');
+
+    const controls = new CheckpointsControls();
+
+    await controls.toggleFavoritesOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_favorites_only_checkpoints')).toBe('true');
+    expect(stateModule.getCurrentPageState().showFavoritesOnly).toBe(true);
+    expect(document.getElementById('favoriteFilterBtn').classList.contains('active')).toBe(true);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+
+    resetAndReloadMock.mockClear();
+
+    await controls.toggleFavoritesOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_favorites_only_checkpoints')).toBe('false');
+    expect(stateModule.getCurrentPageState().showFavoritesOnly).toBe(false);
+    expect(document.getElementById('favoriteFilterBtn').classList.contains('active')).toBe(false);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+  });
+
+  it('persists update-available toggle for LoRAs and triggers reload', async () => {
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    const controls = new LorasControls();
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_update_available_only_loras')).toBe('true');
+    expect(stateModule.getCurrentPageState().showUpdateAvailableOnly).toBe(true);
+    expect(document.getElementById('updateFilterBtn').classList.contains('active')).toBe(true);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+
+    resetAndReloadMock.mockClear();
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_update_available_only_loras')).toBe('false');
+    expect(stateModule.getCurrentPageState().showUpdateAvailableOnly).toBe(false);
+    expect(document.getElementById('updateFilterBtn').classList.contains('active')).toBe(false);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+  });
+
+  it('does not change filter badge or button when toggling update availability', async () => {
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    const controls = new LorasControls();
+
+    const filterBadge = document.getElementById('activeFiltersCount');
+    const filterButton = document.getElementById('filterButton');
+
+    expect(filterBadge.style.display).toBe('none');
+    expect(filterBadge.textContent).toBe('0');
+    expect(filterButton.classList.contains('active')).toBe(false);
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(filterBadge.style.display).toBe('none');
+    expect(filterBadge.textContent).toBe('0');
+    expect(filterButton.classList.contains('active')).toBe(false);
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(filterBadge.style.display).toBe('none');
+    expect(filterBadge.textContent).toBe('0');
+    expect(filterButton.classList.contains('active')).toBe(false);
+  });
+
+  it('persists update-available toggle for checkpoints and triggers reload', async () => {
+    renderControlsDom('checkpoints');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('checkpoints');
+    const { CheckpointsControls } = await import('../../../static/js/components/controls/CheckpointsControls.js');
+
+    const controls = new CheckpointsControls();
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_update_available_only_checkpoints')).toBe('true');
+    expect(stateModule.getCurrentPageState().showUpdateAvailableOnly).toBe(true);
+    expect(document.getElementById('updateFilterBtn').classList.contains('active')).toBe(true);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+
+    resetAndReloadMock.mockClear();
+
+    await controls.toggleUpdateAvailableOnly();
+
+    expect(sessionStorage.getItem('lora_manager_show_update_available_only_checkpoints')).toBe('false');
+    expect(stateModule.getCurrentPageState().showUpdateAvailableOnly).toBe(false);
+    expect(document.getElementById('updateFilterBtn').classList.contains('active')).toBe(false);
+    expect(resetAndReloadMock).toHaveBeenCalledWith(true);
+  });
+
+  it('disables update controls while checking for model updates and restores them afterwards', async () => {
+    const deferred = createDeferred();
+    performModelUpdateCheckMock.mockImplementation(async () => {
+      await deferred.promise;
+      return { status: 'success', displayName: 'LoRA', records: [] };
+    });
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    new LorasControls();
+
+    const updateButton = document.getElementById('updateFilterBtn');
+    const toggleButton = document.getElementById('updateFilterMenuToggle');
+    const menuItem = document.getElementById('checkUpdatesMenuItem');
+    const dropdownGroup = menuItem.closest('.dropdown-group');
+    const icon = updateButton.querySelector('i');
+
+    expect(updateButton.disabled).toBe(false);
+    expect(toggleButton.disabled).toBe(false);
+    expect(menuItem.classList.contains('disabled')).toBe(false);
+
+    menuItem.dispatchEvent(new Event('click', { bubbles: true }));
+
+    expect(performModelUpdateCheckMock).toHaveBeenCalledTimes(1);
+    expect(updateButton.disabled).toBe(true);
+    expect(updateButton.classList.contains('loading')).toBe(true);
+    expect(updateButton.getAttribute('aria-busy')).toBe('true');
+    expect(toggleButton.disabled).toBe(true);
+    expect(toggleButton.classList.contains('loading')).toBe(true);
+    expect(menuItem.classList.contains('disabled')).toBe(true);
+    expect(menuItem.getAttribute('aria-disabled')).toBe('true');
+    expect(icon.classList.contains('fa-spinner')).toBe(true);
+    expect(icon.classList.contains('fa-spin')).toBe(true);
+
+    deferred.resolve();
+    await performModelUpdateCheckMock.mock.results[0].value;
+    await Promise.resolve();
+
+    await vi.waitFor(() => {
+      expect(updateButton.disabled).toBe(false);
+      expect(updateButton.classList.contains('loading')).toBe(false);
+      expect(toggleButton.disabled).toBe(false);
+      expect(toggleButton.classList.contains('loading')).toBe(false);
+      expect(menuItem.classList.contains('disabled')).toBe(false);
+    });
+
+    expect(updateButton.getAttribute('aria-busy')).toBe('false');
+    expect(menuItem.hasAttribute('aria-disabled')).toBe(false);
+    expect(icon.classList.contains('fa-spinner')).toBe(false);
+    expect(icon.classList.contains('fa-spin')).toBe(false);
+    expect(icon.classList.contains('fa-exclamation-circle')).toBe(true);
+    expect(dropdownGroup.classList.contains('active')).toBe(false);
+  });
+
+  it('saves sort selection and reloads models', async () => {
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    new LorasControls();
+
+    const sortSelect = document.getElementById('sortSelect');
+    sortSelect.value = 'date:asc';
+    sortSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => expect(resetAndReloadMock).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem('lora_manager_loras_sort')).toBe('date:asc');
+    expect(stateModule.getCurrentPageState().sortBy).toBe('date:asc');
+  });
+
+  it('converts legacy sort preference on initialization', async () => {
+    localStorage.setItem('loras_sort', 'date');
+
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    new LorasControls();
+
+    const sortSelect = document.getElementById('sortSelect');
+    expect(sortSelect.value).toBe('date:desc');
+    expect(stateModule.getCurrentPageState().sortBy).toBe('date:desc');
+  });
+
+  it('shows checkpoint custom filter indicator from recipes and clears it', async () => {
+    renderControlsDom('checkpoints');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('checkpoints');
+
+    sessionStorage.setItem('lora_manager_recipe_to_checkpoint_filterHash', 'abc123');
+    sessionStorage.setItem('lora_manager_filterCheckpointRecipeName', 'Flux Recipe With Long Name');
+
+    const { CheckpointsControls } = await import('../../../static/js/components/controls/CheckpointsControls.js');
+
+    const controls = new CheckpointsControls();
+
+    const indicator = document.getElementById('customFilterIndicator');
+    expect(indicator.classList.contains('hidden')).toBe(false);
+
+    const filterText = indicator.querySelector('.customFilterText');
+    expect(filterText.textContent.startsWith('Viewing checkpoint from:')).toBe(true);
+    expect(filterText.getAttribute('title')).toBe('Viewing checkpoint from: Flux Recipe With Long Name');
+
+    resetAndReloadMock.mockClear();
+
+    await controls.clearCustomFilter();
+
+    expect(sessionStorage.getItem('lora_manager_recipe_to_checkpoint_filterHash')).toBeNull();
+    expect(sessionStorage.getItem('lora_manager_filterCheckpointRecipeName')).toBeNull();
+    expect(indicator.classList.contains('hidden')).toBe(true);
+    expect(resetAndReloadMock).toHaveBeenCalled();
+  });
+
+  it('updates duplicate badge after refresh and toggles duplicate mode from controls', async () => {
+    renderControlsDom('checkpoints');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('checkpoints');
+    const { CheckpointsControls } = await import('../../../static/js/components/controls/CheckpointsControls.js');
+
+    const controls = new CheckpointsControls();
+
+    const toggleDuplicateMode = vi.fn();
+    const updateDuplicatesBadgeAfterRefresh = vi.fn();
+    window.modelDuplicatesManager = {
+      toggleDuplicateMode,
+      updateDuplicatesBadgeAfterRefresh,
+    };
+
+    await controls.refreshModels(true);
+    expect(refreshModelsMock).toHaveBeenCalledWith(true);
+    expect(updateDuplicatesBadgeAfterRefresh).toHaveBeenCalledTimes(1);
+
+    const duplicateButton = document.querySelector('[data-action="find-duplicates"]');
+    duplicateButton.click();
+    expect(toggleDuplicateMode).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['loras', 'LorasControls'],
+    ['checkpoints', 'CheckpointsControls'],
+    ['embeddings', 'EmbeddingsControls'],
+  ])('switches %s page into excluded mode and restores state', async (pageKey, exportName) => {
+    renderControlsDom(pageKey);
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState(pageKey);
+    const pageState = stateModule.getCurrentPageState();
+    pageState.filters.search = 'active-search';
+    pageState.showFavoritesOnly = true;
+    pageState.showUpdateAvailableOnly = true;
+
+    const controlsModule = await import('../../../static/js/components/controls/index.js');
+    const ControlsClass = controlsModule[exportName];
+    const controls = new ControlsClass();
+
+    await controls.enterExcludedView();
+
+    expect(pageState.viewMode).toBe('excluded');
+    expect(pageState.filters.search).toBe('');
+    expect(resetAndReloadMock).toHaveBeenLastCalledWith(false);
+    expect(document.getElementById('excludedViewBanner').classList.contains('hidden')).toBe(false);
+    expect(document.querySelector('[data-action="fetch"]').classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('filterButton').disabled).toBe(true);
+
+    pageState.filters.search = 'excluded-search';
+    await controls.exitExcludedView();
+
+    expect(pageState.viewMode).toBe('active');
+    expect(pageState.filters.search).toBe('active-search');
+    expect(pageState.excludedViewState.search).toBe('excluded-search');
+    expect(resetAndReloadMock).toHaveBeenLastCalledWith(true);
+    expect(document.getElementById('excludedViewBanner').classList.contains('hidden')).toBe(true);
+    expect(document.querySelector('[data-action="fetch"]').classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('filterButton').disabled).toBe(false);
+  });
+
+  it('suspends bulk and duplicate modes for excluded view and restores custom filter banner on exit', async () => {
+    renderControlsDom('loras');
+    const stateModule = await import('../../../static/js/state/index.js');
+    stateModule.initPageState('loras');
+    const pageState = stateModule.getCurrentPageState();
+    stateModule.state.bulkMode = true;
+    pageState.duplicatesMode = true;
+
+    sessionStorage.setItem('lora_manager_recipe_to_lora_filterLoraHash', 'hash-1');
+    sessionStorage.setItem('lora_manager_filterRecipeName', 'Recipe Filter');
+
+    const { LorasControls } = await import('../../../static/js/components/controls/LorasControls.js');
+
+    const toggleBulkMode = vi.fn(() => {
+      stateModule.state.bulkMode = !stateModule.state.bulkMode;
+    });
+    const exitDuplicateMode = vi.fn(() => {
+      pageState.duplicatesMode = false;
+    });
+    const enterDuplicateMode = vi.fn(() => {
+      pageState.duplicatesMode = true;
+    });
+
+    window.bulkManager = { toggleBulkMode };
+    window.modelDuplicatesManager = {
+      duplicateGroups: [{ hash: 'dup-1', models: [{ file_path: 'a' }, { file_path: 'b' }] }],
+      exitDuplicateMode,
+      enterDuplicateMode,
+    };
+
+    const controls = new LorasControls();
+    const indicator = document.getElementById('customFilterIndicator');
+    expect(indicator.classList.contains('hidden')).toBe(false);
+
+    await controls.enterExcludedView();
+
+    expect(toggleBulkMode).toHaveBeenCalledTimes(1);
+    expect(exitDuplicateMode).toHaveBeenCalledTimes(1);
+    expect(stateModule.state.bulkMode).toBe(false);
+    expect(pageState.duplicatesMode).toBe(false);
+    expect(indicator.classList.contains('hidden')).toBe(true);
+
+    await controls.exitExcludedView();
+
+    expect(indicator.classList.contains('hidden')).toBe(false);
+    expect(toggleBulkMode).toHaveBeenCalledTimes(2);
+    expect(enterDuplicateMode).toHaveBeenCalledTimes(1);
+    expect(stateModule.state.bulkMode).toBe(true);
+    expect(pageState.duplicatesMode).toBe(true);
+  });
+});

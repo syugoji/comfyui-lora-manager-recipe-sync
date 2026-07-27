@@ -1,0 +1,831 @@
+.app-header {
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  position: fixed;
+  top: 0;
+  z-index: var(--z-header);
+  height: 48px;
+  /* Reduced height */
+  width: 100%;
+  box-shadow: var(--shadow-md);
+  /* Slightly stronger shadow */
+}
+
+.header-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  gap: 1rem;
+}
+
+/* Left section: Logo + Navigation */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Right section: Controls */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Responsive header container for larger screens */
+@media (min-width: 2150px) {
+  .header-container {
+    max-width: 1800px;
+  }
+}
+
+@media (min-width: 3000px) {
+  .header-container {
+    max-width: 2400px;
+  }
+}
+
+/* Logo and title styling */
+.header-branding {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--text-color);
+  gap: 8px;
+}
+
+.app-logo {
+  width: 24px;
+  height: 24px;
+}
+
+.app-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Navigation styling */
+.main-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.nav-item {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--border-radius-xs);
+  color: var(--text-color);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.nav-item:hover,
+.nav-item:focus-visible {
+  background-color: var(--lora-surface-hover, oklch(95% 0.02 256));
+  color: var(--lora-accent);
+}
+
+.nav-item:hover i,
+.nav-item:hover span,
+.nav-item:focus-visible i,
+.nav-item:focus-visible span {
+  color: inherit;
+}
+
+.nav-item.active {
+  background-color: var(--lora-accent);
+  color: white;
+}
+
+/* Header search - Centered with VS Code command palette style */
+.header-search {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  max-width: 600px;
+  margin: 0 auto;
+  transition: opacity 0.2s ease;
+}
+
+/* VS Code command palette style search container */
+.header-search .search-container {
+  width: 100%;
+  max-width: 600px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--input-bg, var(--card-bg));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm, 6px);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  box-shadow: var(--shadow-header);
+  overflow: hidden;
+}
+
+.header-search .search-container:focus-within {
+  border-color: var(--lora-accent);
+  box-shadow: var(--shadow-header), 0 0 0 1px var(--lora-accent);
+}
+
+.header-search input {
+  flex: 1;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  padding-left: 2.25rem !important;
+  padding-right: 6.75rem !important; /* clear room for options + filter + clear/cue toggles */
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.header-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.header-search .search-icon {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.header-search .search-options-toggle,
+.header-search .search-filter-toggle {
+  position: absolute;
+  right: 0.5rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--border-radius-xs, 4px);
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+.header-search .search-options-toggle {
+  right: 2.25rem;
+}
+
+/* Clear button: sit immediately left of the search-options toggle */
+.header-search .search-clear {
+  position: absolute;
+  right: 4.25rem; /* 2.25rem (options toggle) + 28px toggle width + 4px gap */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--border-radius-xs, 4px);
+  padding: 0;
+  line-height: 1;
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+.header-search .search-clear.visible {
+  display: flex;
+}
+
+.header-search .search-clear:hover {
+  background: color-mix(in oklch, var(--text-muted) 15%, transparent);
+  color: var(--lora-accent);
+}
+
+/* Keyboard shortcut cue: shown when search is empty, hidden when typing */
+.header-search .search-shortcut-cue {
+  position: absolute;
+  right: 4.25rem; /* same slot as clear button */
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+}
+
+.header-search .search-shortcut-cue kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  /* Subtle tint derived from text color so it adapts to both light & dark themes */
+  background: color-mix(in oklch, var(--text-muted) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text-muted) 25%, transparent);
+  border-radius: var(--border-radius-xs, 3px);
+  line-height: 1;
+}
+
+.header-search .search-shortcut-cue.hidden {
+  display: none;
+}
+
+.header-search.disabled .search-shortcut-cue {
+  display: none;
+}
+
+.header-search .search-options-toggle:hover,
+.header-search .search-filter-toggle:hover,
+.header-search .search-filter-toggle:focus-visible {
+    background: var(--lora-surface-hover, oklch(95% 0.02 256));
+    color: var(--lora-accent);
+    outline: none;
+}
+
+.header-search .filter-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background: var(--lora-accent);
+  border-radius: 50%;
+  font-size: 0;
+}
+
+/* Disabled state for header search */
+.header-search.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.header-search.disabled input {
+  background-color: var(--input-disabled-bg, #f5f5f5);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.header-search.disabled button {
+  background-color: var(--button-disabled-bg, #e0e0e0);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.header-search.disabled .search-icon {
+  color: var(--text-muted);
+}
+
+/* Dark theme specific styles for disabled header search */
+[data-theme="dark"] .header-search.disabled input {
+  background-color: #3a3a3a;
+  color: #888888;
+  border-color: #555555;
+}
+
+[data-theme="dark"] .header-search.disabled button {
+  background-color: #3a3a3a;
+  color: #888888;
+  border-color: #555555;
+}
+
+[data-theme="dark"] .header-search.disabled .search-icon {
+  color: #888888;
+}
+
+[data-theme="dark"] .header-search.disabled .fas {
+  color: #888888;
+}
+
+/* Header controls (formerly corner controls) */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.header-controls>div {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-base), color var(--transition-base), transform var(--transition-base);
+  position: relative;
+}
+
+.header-controls>div:hover {
+  background: var(--lora-accent);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.theme-toggle {
+  position: relative;
+}
+
+.theme-toggle .light-icon,
+.theme-toggle .dark-icon,
+.theme-toggle .auto-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.theme-toggle .dark-icon {
+  opacity: 1;
+}
+
+.theme-toggle.theme-light .light-icon {
+  opacity: 1;
+}
+
+.theme-toggle.theme-light .dark-icon,
+.theme-toggle.theme-light .auto-icon {
+  opacity: 0;
+}
+
+.theme-toggle.theme-dark .dark-icon {
+  opacity: 1;
+}
+
+.theme-toggle.theme-dark .light-icon,
+.theme-toggle.theme-dark .auto-icon {
+  opacity: 0;
+}
+
+.theme-toggle.theme-auto .auto-icon {
+  opacity: 1;
+}
+
+.theme-toggle.theme-auto .light-icon,
+.theme-toggle.theme-auto .dark-icon {
+  opacity: 0;
+}
+
+.theme-popover {
+  display: none;
+  position: fixed;
+  background: var(--surface-base, #ffffff);
+  border: 1px solid var(--border-base, #e0e0e0);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-xl, 0 4px 16px rgba(0, 0, 0, 0.15));
+  padding: 12px;
+  min-width: 220px;
+  z-index: calc(var(--z-overlay) + 1);
+  animation: theme-popover-in 0.15s ease-out;
+}
+
+.theme-popover.active {
+  display: block;
+}
+
+@keyframes theme-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.theme-popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.theme-popover-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #6c757d);
+}
+
+.theme-popover-divider {
+  height: 1px;
+  background: var(--border-base, #e0e0e0);
+  margin: 10px 0;
+}
+
+.theme-popover-modes {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-mode-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid var(--border-base, #e0e0e0);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-elevated, #ffffff);
+  color: var(--text-primary, #333333);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background-color var(--transition-base, 200ms ease),
+              border-color var(--transition-base, 200ms ease),
+              color var(--transition-base, 200ms ease);
+}
+
+.theme-mode-btn i {
+  font-size: 0.9rem;
+}
+
+.theme-mode-btn:hover {
+  background: var(--surface-hover, oklch(95% 0.02 256));
+  border-color: var(--color-accent, oklch(68% 0.28 256));
+}
+
+.theme-mode-btn.active {
+  background: var(--color-accent-subtle, oklch(68% 0.28 256 / 0.12));
+  border-color: var(--color-accent, oklch(68% 0.28 256));
+  color: var(--color-accent, oklch(68% 0.28 256));
+}
+
+.theme-popover-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.theme-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid var(--border-base, #e0e0e0);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-elevated, #ffffff);
+  color: var(--text-primary, #333333);
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: background-color var(--transition-base, 200ms ease),
+              border-color var(--transition-base, 200ms ease),
+              color var(--transition-base, 200ms ease);
+}
+
+.theme-preset-btn:hover {
+  background: var(--surface-hover, oklch(95% 0.02 256));
+  border-color: var(--color-accent, oklch(68% 0.28 256));
+}
+
+.theme-preset-btn.active {
+  background: var(--color-accent-subtle, oklch(68% 0.28 256 / 0.12));
+  border-color: var(--color-accent, oklch(68% 0.28 256));
+  color: var(--color-accent, oklch(68% 0.28 256));
+}
+
+.preset-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--border-subtle, oklch(72% 0.03 256 / 0.45));
+  flex-shrink: 0;
+  transition: transform var(--transition-base, 200ms ease),
+              box-shadow var(--transition-base, 200ms ease);
+}
+
+/* Solid accent colors — each swatch shows the theme's accent color directly.
+   This matches the app's flat, token-driven design language instead of using
+   decorative gradients that clash with the matte aesthetic. */
+
+.preset-swatch-default {
+  background: oklch(68% 0.28 256);
+}
+
+.preset-swatch-nord {
+  background: oklch(62% 0.18 213);
+}
+
+.preset-swatch-midnight {
+  background: oklch(52% 0.15 300);
+}
+
+.preset-swatch-monokai {
+  background: oklch(72% 0.24 190);
+}
+
+.preset-swatch-dracula {
+  background: oklch(68% 0.24 265);
+}
+
+.preset-swatch-solarized {
+  background: oklch(55% 0.18 175);
+}
+
+.theme-preset-btn.active .preset-swatch {
+  box-shadow: 0 0 0 2px var(--color-accent, oklch(68% 0.28 256));
+}
+
+.theme-preset-btn:hover .preset-swatch {
+  transform: scale(1.08);
+}
+
+/* Dark mode: use each preset's dark-mode accent lightness for visibility.
+   These match the --color-accent-l values from [data-theme="dark"][data-theme-preset="..."]
+   in tokens/colors.css so the swatch accurately previews what the theme looks like. */
+
+[data-theme="dark"] .preset-swatch-default {
+  background: oklch(68% 0.28 256);
+}
+
+[data-theme="dark"] .preset-swatch-nord {
+  background: oklch(68% 0.18 213);
+}
+
+[data-theme="dark"] .preset-swatch-midnight {
+  background: oklch(68% 0.14 300);
+}
+
+[data-theme="dark"] .preset-swatch-monokai {
+  background: oklch(72% 0.24 190);
+}
+
+[data-theme="dark"] .preset-swatch-dracula {
+  background: oklch(72% 0.24 265);
+}
+
+[data-theme="dark"] .preset-swatch-solarized {
+  background: oklch(60% 0.18 175);
+}
+
+/* Badge styling */
+.update-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  background-color: var(--lora-error);
+  border-radius: 50%;
+  border: 2px solid var(--card-bg);
+  transition: opacity var(--transition-base);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.update-badge.visible {
+  opacity: 1;
+}
+
+/* Hamburger menu button - hidden by default */
+.hamburger-menu-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-base), color var(--transition-base);
+  flex-shrink: 0;
+}
+
+.hamburger-menu-btn:hover,
+.hamburger-menu-btn:focus-visible {
+    background: var(--lora-surface-hover, oklch(95% 0.02 256));
+    color: var(--lora-accent);
+    outline: none;
+}
+
+.hamburger-dropdown .dropdown-item:hover,
+.hamburger-dropdown .dropdown-item:focus-visible {
+    background: var(--lora-surface-hover, oklch(95% 0.02 256));
+    color: var(--lora-accent);
+    outline: none;
+}
+
+/* Hamburger dropdown menu */
+.hamburger-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm, 6px);
+  box-shadow: var(--shadow-toast);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: var(--z-dropdown, 200);
+}
+
+.hamburger-dropdown.active {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hamburger-dropdown .dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--border-radius-xs, 4px);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background-color var(--transition-base), color var(--transition-base);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.hamburger-dropdown .dropdown-item:hover {
+  background: var(--lora-surface-hover, oklch(95% 0.02 256));
+  color: var(--lora-accent);
+}
+
+.hamburger-dropdown .dropdown-item i {
+  width: 20px;
+  text-align: center;
+}
+
+.hamburger-dropdown .dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.25rem 0;
+}
+
+/* Responsive: Early optimization at 1200px - reduce gaps and padding */
+@media (max-width: 1200px) {
+  .header-container {
+    gap: 0.75rem;
+    padding: 0 12px;
+  }
+
+  .main-nav {
+    gap: 0.25rem;
+  }
+
+  .nav-item {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .header-controls {
+    gap: 6px;
+  }
+
+  .header-controls > div {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* Responsive: Hide nav icons at 1100px to save space */
+@media (max-width: 1100px) {
+  .nav-item {
+    gap: 0;
+    padding: 0.25rem 0.4rem;
+  }
+
+  .nav-item i {
+    display: none;
+  }
+
+  .header-search {
+    max-width: 450px;
+  }
+}
+
+@media (max-width: 950px) {
+  .app-title {
+    display: none !important;
+  }
+
+  .header-container {
+    padding: 0 10px;
+    gap: 0.5rem;
+  }
+
+  .header-controls {
+    display: none !important;
+  }
+
+  .hamburger-menu-btn {
+    display: flex !important;
+  }
+
+  .hamburger-dropdown {
+    display: none;
+  }
+
+  .hamburger-dropdown.active {
+    display: flex;
+  }
+
+  .header-search {
+    max-width: none;
+    margin: 0;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .main-nav {
+    gap: 0.25rem;
+    margin-right: 0;
+  }
+
+  .nav-item {
+    padding: 0.25rem 0.35rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* Responsive: Compact mode at 768px */
+@media (max-width: 768px) {
+  .header-search input {
+    padding: 0.4rem 0.6rem;
+    padding-left: 2rem !important;
+    padding-right: 4.5rem !important;
+    font-size: 0.9rem;
+  }
+
+  .header-search .search-container {
+    border-radius: var(--border-radius-xs, 4px);
+  }
+}
+
+/* For very small screens - switch nav to icons only */
+@media (max-width: 600px) {
+  .header-container {
+    padding: 0 8px;
+    gap: 0.4rem;
+  }
+
+  .main-nav {
+    display: flex;
+    gap: 0.15rem;
+    margin-right: 0;
+  }
+
+  .nav-item {
+    padding: 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  .nav-item span {
+    display: none;
+  }
+
+  .nav-item i {
+    display: block;
+    font-size: 1rem;
+  }
+}
+
+/* Position relative for hamburger menu positioning */
+.header-right {
+  position: relative;
+}

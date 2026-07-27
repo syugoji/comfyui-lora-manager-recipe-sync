@@ -1,0 +1,40 @@
+__pycache__/
+.pytest_cache/
+settings.json
+path_mappings.yaml
+output/*
+py/run_test.py
+.vscode/
+cache/
+civitai/
+node_modules/
+coverage/
+.coverage
+model_cache/
+
+# agent / dev tooling
+.opencode/
+.claude/
+.sisyphus/
+.codex
+.omo
+reasonix.toml
+.reasonix/
+.codegraph/
+
+# Vue widgets development cache (but keep build output)
+vue-widgets/node_modules/
+vue-widgets/.vite/
+vue-widgets/dist/
+
+# Hypothesis test cache
+.hypothesis/
+
+# Working/research notes (not committed)
+.docs/
+
+# --- このフォークで追加 ---
+# 利用者のローカル環境そのもの。配布物に混ぜない（CHANGES-FORK.md §8）
+backups/
+stats/
+.tracking

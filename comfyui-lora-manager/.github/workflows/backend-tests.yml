@@ -1,0 +1,93 @@
+name: Backend Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'py/**'
+      - 'standalone.py'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    paths:
+      - 'py/**'
+      - 'standalone.py'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'pyproject.toml'
+      - 'pytest.ini'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  pytest:
+    name: Run pytest with coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Verify symlink support
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import tempfile
+
+          root = pathlib.Path(tempfile.mkdtemp(prefix="lm-symlink-check-"))
+          target = root / "target"
+          target.mkdir()
+          link = root / "link"
+          try:
+              link.symlink_to(target, target_is_directory=True)
+          except OSError as exc:
+              raise SystemExit(f"Failed to create directory symlink in CI: {exc}")
+
+          is_link = os.path.islink(link)
+          is_dir = os.path.isdir(link)
+          realpath = os.path.realpath(link)
+          print(f"islink={is_link} isdir={is_dir} realpath={realpath}")
+          if not (is_link and is_dir and realpath == str(target)):
+              raise SystemExit("Directory symlink is not functioning correctly in CI; aborting.")
+          PY
+
+      - name: Run pytest with coverage
+        env:
+          COVERAGE_FILE: coverage/backend/.coverage
+        run: |
+          mkdir -p coverage/backend
+          python -m pytest \
+            --cov=py \
+            --cov=standalone \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage/backend/coverage.xml \
+            --cov-report=html:coverage/backend/html \
+            --cov-report=json:coverage/backend/coverage.json
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage/backend
+          if-no-files-found: warn

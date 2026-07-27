@@ -1,0 +1,815 @@
+"""Services encapsulating recipe persistence workflows."""
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import shutil
+import time
+import uuid
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Optional
+
+from ...config import config
+from ...recipes.constants import GEN_PARAM_KEYS
+from ...utils.utils import calculate_recipe_fingerprint
+from .errors import RecipeNotFoundError, RecipeValidationError
+
+
+@dataclass(frozen=True)
+class PersistenceResult:
+    """Return payload from persistence operations."""
+
+    payload: dict[str, Any]
+    status: int = 200
+
+
+class RecipePersistenceService:
+    """Coordinate recipe persistence tasks across storage and caches."""
+
+    def __init__(
+        self,
+        *,
+        exif_utils,
+        card_preview_width: int,
+        logger,
+    ) -> None:
+        self._exif_utils = exif_utils
+        self._card_preview_width = card_preview_width
+        self._logger = logger
+
+    async def save_recipe(
+        self,
+        *,
+        recipe_scanner,
+        image_bytes: bytes | None,
+        image_base64: str | None,
+        name: str | None,
+        tags: Iterable[str],
+        metadata: Optional[dict[str, Any]],
+        extension: str | None = None,
+        recipe_id: str | None = None,
+        target_dir: str | None = None,
+    ) -> PersistenceResult:
+        """Persist a user uploaded recipe.
+
+        Args:
+            recipe_id: If provided, reuse this ID instead of generating a new
+                UUID. Used by re-import to preserve the original recipe identity.
+            target_dir: If provided, save recipe files to this directory instead
+                of the default recipes_dir. Used by re-import to preserve the
+                original folder location.
+        """
+
+        missing_fields = []
+        if not name:
+            missing_fields.append("name")
+        if metadata is None:
+            missing_fields.append("metadata")
+        if missing_fields:
+            raise RecipeValidationError(
+                f"Missing required fields: {', '.join(missing_fields)}"
+            )
+
+        resolved_image_bytes = self._resolve_image_bytes(image_bytes, image_base64)
+        recipes_dir = target_dir or recipe_scanner.recipes_dir
+        os.makedirs(recipes_dir, exist_ok=True)
+
+        recipe_id = recipe_id or str(uuid.uuid4())
+        
+        # Handle video formats by bypassing optimization and metadata embedding
+        is_video = extension in [".mp4", ".webm"]
+        if is_video:
+            optimized_image = resolved_image_bytes
+            # extension is already set
+        else:
+            optimized_image, extension = self._exif_utils.optimize_image(
+                image_data=resolved_image_bytes,
+                target_width=self._card_preview_width,
+                format="webp",
+                quality=85,
+                preserve_metadata=True,
+            )
+            
+        image_filename = f"{recipe_id}{extension}"
+        image_path = os.path.join(recipes_dir, image_filename)
+        normalized_image_path = os.path.normpath(image_path)
+        with open(normalized_image_path, "wb") as file_obj:
+            file_obj.write(optimized_image)
+
+        current_time = time.time()
+        loras_data = [self._normalise_lora_entry(lora) for lora in (metadata.get("loras") or [])]
+        embeddings_data = [
+            self._normalise_embedding_entry(embedding)
+            for embedding in (metadata.get("embeddings") or [])
+            if isinstance(embedding, dict)
+        ]
+        checkpoint_entry = self._sanitize_checkpoint_entry(self._extract_checkpoint_entry(metadata))
+        gen_params = self._sanitize_gen_params_for_storage(metadata)
+
+        fingerprint = calculate_recipe_fingerprint(loras_data)
+        recipe_data: Dict[str, Any] = {
+            "id": recipe_id,
+            "file_path": normalized_image_path,
+            "title": name,
+            "modified": current_time,
+            "created_date": current_time,
+            "base_model": metadata.get("base_model", ""),
+            "loras": loras_data,
+            "embeddings": embeddings_data,
+            "gen_params": gen_params,
+            "fingerprint": fingerprint,
+        }
+        if checkpoint_entry:
+            recipe_data["checkpoint"] = checkpoint_entry
+
+        for comfy_key in ("comfy_prompt", "comfy_workflow"):
+            comfy_value = metadata.get(comfy_key)
+            if isinstance(comfy_value, dict):
+                recipe_data[comfy_key] = comfy_value
+
+        a1111_parameters = metadata.get("a1111_parameters")
+        if isinstance(a1111_parameters, str) and a1111_parameters.strip():
+            recipe_data["a1111_parameters"] = a1111_parameters
+
+        generation_metadata = metadata.get("generation_metadata")
+        if isinstance(generation_metadata, dict) and generation_metadata:
+            recipe_data["generation_metadata"] = generation_metadata
+
+        for source_key in ("generation_source", "generation_source_policy"):
+            source_value = metadata.get(source_key)
+            if isinstance(source_value, str) and source_value.strip():
+                recipe_data[source_key] = source_value.strip()
+
+        tags_list = list(tags)
+        if tags_list:
+            recipe_data["tags"] = tags_list
+
+        if metadata.get("source_path"):
+            recipe_data["source_path"] = metadata.get("source_path")
+
+        nsfw_level = metadata.get("preview_nsfw_level")
+        if nsfw_level is not None and isinstance(nsfw_level, int):
+            recipe_data["preview_nsfw_level"] = nsfw_level
+
+        # Compute recipe folder relative to recipes root, mirroring
+        # RecipeScanner._calculate_folder() which is only called during scan/load.
+        if recipe_scanner.recipes_dir:
+            recipe_file_dir = os.path.dirname(normalized_image_path)
+            try:
+                relative_folder = os.path.relpath(recipe_file_dir, recipe_scanner.recipes_dir)
+                if relative_folder in (".", ""):
+                    relative_folder = ""
+                recipe_data["folder"] = relative_folder.replace(os.path.sep, "/")
+            except Exception:
+                recipe_data["folder"] = ""
+
+        json_filename = f"{recipe_id}.recipe.json"
+        json_path = os.path.join(recipes_dir, json_filename)
+        json_path = os.path.normpath(json_path)
+
+        with open(json_path, "w", encoding="utf-8") as file_obj:
+            json.dump(recipe_data, file_obj, indent=4, ensure_ascii=False)
+
+        if not is_video:
+            self._exif_utils.append_recipe_metadata(normalized_image_path, recipe_data)
+
+        matching_recipes = await self._find_matching_recipes(recipe_scanner, fingerprint, exclude_id=recipe_id)
+        await recipe_scanner.add_recipe(recipe_data)
+
+        return PersistenceResult(
+            {
+                "success": True,
+                "recipe_id": recipe_id,
+                "image_path": normalized_image_path,
+                "json_path": json_path,
+                "matching_recipes": matching_recipes,
+            }
+        )
+
+    @staticmethod
+    def _sanitize_gen_params_for_storage(metadata: dict[str, Any]) -> dict[str, Any]:
+        gen_params = metadata.get("gen_params")
+        if isinstance(gen_params, dict) and gen_params:
+            source = gen_params
+        else:
+            source = metadata.get("raw_metadata")
+
+        if not isinstance(source, dict):
+            return {}
+
+        allowed_keys = set(GEN_PARAM_KEYS)
+        sanitized: dict[str, Any] = {}
+        for key in allowed_keys:
+            if key not in source:
+                continue
+            value = source.get(key)
+            if value in (None, ""):
+                continue
+            sanitized[key] = value
+
+        sanitized.pop("checkpoint", None)
+        return sanitized
+
+    async def delete_recipe(self, *, recipe_scanner, recipe_id: str) -> PersistenceResult:
+        """Delete an existing recipe."""
+
+        recipe_json_path = await recipe_scanner.get_recipe_json_path(recipe_id)
+        if not recipe_json_path or not os.path.exists(recipe_json_path):
+            raise RecipeNotFoundError("Recipe not found")
+
+        with open(recipe_json_path, "r", encoding="utf-8") as file_obj:
+            recipe_data = json.load(file_obj)
+
+        image_path = recipe_data.get("file_path")
+        os.remove(recipe_json_path)
+        if image_path and os.path.exists(image_path):
+            os.remove(image_path)
+
+        await recipe_scanner.remove_recipe(recipe_id)
+        return PersistenceResult({"success": True, "message": "Recipe deleted successfully"})
+
+    async def update_recipe(self, *, recipe_scanner, recipe_id: str, updates: dict[str, Any]) -> PersistenceResult:
+        """Update persisted metadata for a recipe."""
+
+        allowed_fields = (
+            "title",
+            "tags",
+            "notes",
+            "source_path",
+            "preview_nsfw_level",
+            "favorite",
+            "gen_params",
+        )
+
+        if not any(key in updates for key in allowed_fields):
+            raise RecipeValidationError(
+                "At least one field to update must be provided (title or tags or notes or source_path or preview_nsfw_level or favorite or gen_params)"
+            )
+
+        if "gen_params" in updates and not isinstance(updates["gen_params"], dict):
+            raise RecipeValidationError("gen_params must be an object")
+        if "notes" in updates and not isinstance(updates["notes"], str):
+            raise RecipeValidationError("notes must be a string")
+
+        success = await recipe_scanner.update_recipe_metadata(recipe_id, updates)
+        if not success:
+            raise RecipeNotFoundError("Recipe not found or update failed")
+
+        return PersistenceResult({"success": True, "recipe_id": recipe_id, "updates": updates})
+
+    def _normalize_target_path(self, recipe_scanner, target_path: str) -> tuple[str, str]:
+        """Normalize and validate the target path for recipe moves."""
+
+        if not target_path:
+            raise RecipeValidationError("Target path is required")
+
+        recipes_root = recipe_scanner.recipes_dir
+        if not recipes_root:
+            raise RecipeNotFoundError("Recipes directory not found")
+
+        normalized_target = os.path.normpath(target_path)
+        recipes_root = os.path.normpath(recipes_root)
+        if not os.path.isabs(normalized_target):
+            normalized_target = os.path.normpath(os.path.join(recipes_root, normalized_target))
+
+        try:
+            common_root = os.path.commonpath([normalized_target, recipes_root])
+        except ValueError as exc:
+            raise RecipeValidationError("Invalid target path") from exc
+
+        if common_root != recipes_root:
+            raise RecipeValidationError("Target path must be inside the recipes directory")
+
+        return normalized_target, recipes_root
+
+    async def _move_recipe_files(
+        self,
+        *,
+        recipe_scanner,
+        recipe_id: str,
+        normalized_target: str,
+        recipes_root: str,
+    ) -> dict[str, Any]:
+        """Move the recipe's JSON and preview image into the normalized target."""
+
+        recipe_json_path = await recipe_scanner.get_recipe_json_path(recipe_id)
+        if not recipe_json_path or not os.path.exists(recipe_json_path):
+            raise RecipeNotFoundError("Recipe not found")
+
+        recipe_data = await recipe_scanner.get_recipe_by_id(recipe_id)
+        if not recipe_data:
+            raise RecipeNotFoundError("Recipe not found")
+
+        current_json_dir = os.path.dirname(recipe_json_path)
+        normalized_image_path = os.path.normpath(recipe_data.get("file_path") or "") if recipe_data.get("file_path") else None
+
+        os.makedirs(normalized_target, exist_ok=True)
+
+        if os.path.normpath(current_json_dir) == normalized_target:
+            return {
+                "success": True,
+                "message": "Recipe is already in the target folder",
+                "recipe_id": recipe_id,
+                "original_file_path": recipe_data.get("file_path"),
+                "new_file_path": recipe_data.get("file_path"),
+            }
+
+        new_json_path = os.path.normpath(os.path.join(normalized_target, os.path.basename(recipe_json_path)))
+        shutil.move(recipe_json_path, new_json_path)
+
+        new_image_path = normalized_image_path
+        if normalized_image_path:
+            target_image_path = os.path.normpath(os.path.join(normalized_target, os.path.basename(normalized_image_path)))
+            if os.path.exists(normalized_image_path) and normalized_image_path != target_image_path:
+                shutil.move(normalized_image_path, target_image_path)
+            new_image_path = target_image_path
+
+        relative_folder = os.path.relpath(normalized_target, recipes_root)
+        if relative_folder in (".", ""):
+            relative_folder = ""
+        updates = {"file_path": new_image_path or recipe_data.get("file_path"), "folder": relative_folder.replace(os.path.sep, "/")}
+
+        updated = await recipe_scanner.update_recipe_metadata(recipe_id, updates)
+        if not updated:
+            raise RecipeNotFoundError("Recipe not found after move")
+
+        return {
+            "success": True,
+            "recipe_id": recipe_id,
+            "original_file_path": recipe_data.get("file_path"),
+            "new_file_path": updates["file_path"],
+            "json_path": new_json_path,
+            "folder": updates["folder"],
+        }
+
+    async def move_recipe(self, *, recipe_scanner, recipe_id: str, target_path: str) -> PersistenceResult:
+        """Move a recipe's assets into a new folder under the recipes root."""
+
+        normalized_target, recipes_root = self._normalize_target_path(recipe_scanner, target_path)
+        result = await self._move_recipe_files(
+            recipe_scanner=recipe_scanner,
+            recipe_id=recipe_id,
+            normalized_target=normalized_target,
+            recipes_root=recipes_root,
+        )
+        return PersistenceResult(result)
+
+    async def move_recipes_bulk(
+        self,
+        *,
+        recipe_scanner,
+        recipe_ids: Iterable[str],
+        target_path: str,
+    ) -> PersistenceResult:
+        """Move multiple recipes to a new folder."""
+
+        recipe_ids = list(recipe_ids)
+        if not recipe_ids:
+            raise RecipeValidationError("No recipe IDs provided")
+
+        normalized_target, recipes_root = self._normalize_target_path(recipe_scanner, target_path)
+
+        results: list[dict[str, Any]] = []
+        success_count = 0
+        failure_count = 0
+
+        for recipe_id in recipe_ids:
+            try:
+                move_result = await self._move_recipe_files(
+                    recipe_scanner=recipe_scanner,
+                    recipe_id=str(recipe_id),
+                    normalized_target=normalized_target,
+                    recipes_root=recipes_root,
+                )
+                results.append(
+                    {
+                        "recipe_id": recipe_id,
+                        "original_file_path": move_result.get("original_file_path"),
+                        "new_file_path": move_result.get("new_file_path"),
+                        "success": True,
+                        "message": move_result.get("message", ""),
+                        "folder": move_result.get("folder", ""),
+                    }
+                )
+                success_count += 1
+            except Exception as exc:  # pragma: no cover - per-item error handling
+                results.append(
+                    {
+                        "recipe_id": recipe_id,
+                        "original_file_path": None,
+                        "new_file_path": None,
+                        "success": False,
+                        "message": str(exc),
+                    }
+                )
+                failure_count += 1
+
+        return PersistenceResult(
+            {
+                "success": True,
+                "message": f"Moved {success_count} of {len(recipe_ids)} recipes",
+                "results": results,
+                "success_count": success_count,
+                "failure_count": failure_count,
+            }
+        )
+
+    async def reconnect_lora(
+        self,
+        *,
+        recipe_scanner,
+        recipe_id: str,
+        lora_index: int,
+        target_name: str,
+    ) -> PersistenceResult:
+        """Reconnect a LoRA entry within an existing recipe."""
+
+        recipe_path = await recipe_scanner.get_recipe_json_path(recipe_id)
+        if not recipe_path or not os.path.exists(recipe_path):
+            raise RecipeNotFoundError("Recipe not found")
+
+        target_lora = await recipe_scanner.get_local_lora(target_name)
+        if not target_lora:
+            raise RecipeNotFoundError(f"Local LoRA not found with name: {target_name}")
+
+        recipe_data, updated_lora = await recipe_scanner.update_lora_entry(
+            recipe_id,
+            lora_index,
+            target_name=target_name,
+            target_lora=target_lora,
+        )
+
+        image_path = recipe_data.get("file_path")
+        if image_path and os.path.exists(image_path):
+            self._exif_utils.append_recipe_metadata(image_path, recipe_data)
+
+        matching_recipes = []
+        if "fingerprint" in recipe_data:
+            matching_recipes = await recipe_scanner.find_recipes_by_fingerprint(recipe_data["fingerprint"])
+            if recipe_id in matching_recipes:
+                matching_recipes.remove(recipe_id)
+
+        return PersistenceResult(
+            {
+                "success": True,
+                "recipe_id": recipe_id,
+                "updated_lora": updated_lora,
+                "matching_recipes": matching_recipes,
+            }
+        )
+
+    async def bulk_delete(
+        self,
+        *,
+        recipe_scanner,
+        recipe_ids: Iterable[str],
+    ) -> PersistenceResult:
+        """Delete multiple recipes in a single request."""
+
+        recipe_ids = list(recipe_ids)
+        if not recipe_ids:
+            raise RecipeValidationError("No recipe IDs provided")
+
+        deleted_recipes: list[str] = []
+        failed_recipes: list[dict[str, Any]] = []
+
+        for recipe_id in recipe_ids:
+            recipe_json_path = await recipe_scanner.get_recipe_json_path(recipe_id)
+            if not recipe_json_path or not os.path.exists(recipe_json_path):
+                failed_recipes.append({"id": recipe_id, "reason": "Recipe not found"})
+                continue
+
+            try:
+                with open(recipe_json_path, "r", encoding="utf-8") as file_obj:
+                    recipe_data = json.load(file_obj)
+                image_path = recipe_data.get("file_path")
+                os.remove(recipe_json_path)
+                if image_path and os.path.exists(image_path):
+                    os.remove(image_path)
+                deleted_recipes.append(recipe_id)
+            except Exception as exc:
+                failed_recipes.append({"id": recipe_id, "reason": str(exc)})
+
+        if deleted_recipes:
+            await recipe_scanner.bulk_remove(deleted_recipes)
+
+        return PersistenceResult(
+            {
+                "success": True,
+                "deleted": deleted_recipes,
+                "failed": failed_recipes,
+                "total_deleted": len(deleted_recipes),
+                "total_failed": len(failed_recipes),
+            }
+        )
+
+    async def save_recipe_from_widget(
+        self,
+        *,
+        recipe_scanner,
+        metadata: dict[str, Any],
+        image_bytes: bytes,
+    ) -> PersistenceResult:
+        """Save a recipe constructed from widget metadata."""
+
+        if not metadata:
+            raise RecipeValidationError("No generation metadata found")
+
+        recipes_dir = recipe_scanner.recipes_dir
+        os.makedirs(recipes_dir, exist_ok=True)
+
+        recipe_id = str(uuid.uuid4())
+        optimized_image, extension = self._exif_utils.optimize_image(
+            image_data=image_bytes,
+            target_width=self._card_preview_width,
+            format="webp",
+            quality=85,
+            preserve_metadata=True,
+        )
+        image_filename = f"{recipe_id}{extension}"
+        image_path = os.path.join(recipes_dir, image_filename)
+        with open(image_path, "wb") as file_obj:
+            file_obj.write(optimized_image)
+
+        lora_stack = metadata.get("loras", "")
+        lora_matches = re.findall(r"<lora:([^:]+):([^>]+)>", lora_stack)
+
+        loras_data = []
+        base_model_counts: Dict[str, int] = {}
+
+        for name, strength in lora_matches:
+            lora_info = await recipe_scanner.get_local_lora(name)
+            lora_data = {
+                "file_name": name,
+                "strength": float(strength),
+                "hash": (lora_info.get("sha256") or "").lower() if lora_info else "",
+                "modelVersionId": (lora_info.get("civitai") or {}).get("id", 0) if lora_info else 0,
+                "modelName": ((lora_info.get("civitai") or {}).get("model") or {}).get("name", name) if lora_info else "",
+                "modelVersionName": (lora_info.get("civitai") or {}).get("name", "") if lora_info else "",
+                "isDeleted": False,
+                "exclude": False,
+            }
+            loras_data.append(lora_data)
+
+            if lora_info and "base_model" in lora_info:
+                base_model = lora_info["base_model"]
+                base_model_counts[base_model] = base_model_counts.get(base_model, 0) + 1
+
+        recipe_name = self._derive_recipe_name(lora_matches)
+        most_common_base_model = (
+            max(base_model_counts.items(), key=lambda item: item[1])[0] if base_model_counts else ""
+        )
+        checkpoint_entry = await self._build_widget_checkpoint_entry(
+            recipe_scanner,
+            metadata.get("checkpoint"),
+        )
+
+        recipe_data = {
+            "id": recipe_id,
+            "file_path": image_path,
+            "title": recipe_name,
+            "modified": time.time(),
+            "created_date": time.time(),
+            "base_model": most_common_base_model or (checkpoint_entry or {}).get("baseModel", ""),
+            "loras": loras_data,
+            "gen_params": {
+                key: value
+                for key, value in metadata.items()
+                if key not in ["checkpoint", "loras"]
+            },
+            "loras_stack": lora_stack,
+        }
+        if checkpoint_entry:
+            recipe_data["checkpoint"] = checkpoint_entry
+
+        json_filename = f"{recipe_id}.recipe.json"
+        json_path = os.path.join(recipes_dir, json_filename)
+        with open(json_path, "w", encoding="utf-8") as file_obj:
+            json.dump(recipe_data, file_obj, indent=4, ensure_ascii=False)
+
+        self._exif_utils.append_recipe_metadata(image_path, recipe_data)
+        await recipe_scanner.add_recipe(recipe_data)
+
+        return PersistenceResult(
+            {
+                "success": True,
+                "recipe_id": recipe_id,
+                "image_path": image_path,
+                "json_path": json_path,
+                "recipe_name": recipe_name,
+            }
+        )
+
+    # Helper methods ---------------------------------------------------
+
+    async def _build_widget_checkpoint_entry(
+        self,
+        recipe_scanner,
+        checkpoint_raw: Any,
+    ) -> Optional[dict[str, Any]]:
+        """Build recipe checkpoint metadata from widget generation metadata."""
+
+        if isinstance(checkpoint_raw, dict):
+            return self._sanitize_checkpoint_entry(checkpoint_raw)
+
+        if not isinstance(checkpoint_raw, str):
+            return None
+
+        checkpoint_name = checkpoint_raw.strip()
+        if not checkpoint_name:
+            return None
+
+        file_name = os.path.splitext(os.path.basename(checkpoint_name))[0]
+        checkpoint_info = await self._lookup_widget_checkpoint(
+            recipe_scanner,
+            checkpoint_name,
+        )
+        if not checkpoint_info:
+            return {
+                "type": "checkpoint",
+                "name": checkpoint_name,
+                "file_name": file_name,
+                "hash": "",
+            }
+
+        civitai = checkpoint_info.get("civitai") or {}
+        civitai_model = civitai.get("model") or {}
+        file_path = checkpoint_info.get("file_path") or checkpoint_info.get("path") or ""
+        cached_file_name = (
+            checkpoint_info.get("file_name")
+            or (os.path.splitext(os.path.basename(file_path))[0] if file_path else "")
+            or file_name
+        )
+
+        return {
+            "type": "checkpoint",
+            "modelId": civitai_model.get("id", 0),
+            "modelVersionId": civitai.get("id", 0),
+            "name": civitai_model.get("name") or checkpoint_info.get("model_name") or checkpoint_name,
+            "version": civitai.get("name", ""),
+            "hash": (checkpoint_info.get("sha256") or checkpoint_info.get("hash") or "").lower(),
+            "file_name": cached_file_name,
+            "modelName": civitai_model.get("name", ""),
+            "modelVersionName": civitai.get("name", ""),
+            "baseModel": checkpoint_info.get("base_model") or civitai.get("baseModel", ""),
+        }
+
+    async def _lookup_widget_checkpoint(
+        self,
+        recipe_scanner,
+        checkpoint_name: str,
+    ) -> Optional[dict[str, Any]]:
+        lookup = getattr(recipe_scanner, "get_local_checkpoint", None)
+        if not callable(lookup):
+            return None
+
+        candidates = []
+        for candidate in (
+            checkpoint_name,
+            os.path.basename(checkpoint_name),
+            os.path.splitext(os.path.basename(checkpoint_name))[0],
+        ):
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+
+        for candidate in candidates:
+            try:
+                checkpoint_info = await lookup(candidate)
+            except Exception as exc:
+                self._logger.debug(
+                    "Failed to lookup checkpoint %s while saving widget recipe: %s",
+                    candidate,
+                    exc,
+                )
+                continue
+            if checkpoint_info:
+                return checkpoint_info
+
+        return None
+
+    def _extract_checkpoint_entry(self, metadata: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Pull a checkpoint entry from various metadata locations."""
+
+        checkpoint_entry = metadata.get("checkpoint") or metadata.get("model")
+        if not checkpoint_entry:
+            gen_params = metadata.get("gen_params") or {}
+            checkpoint_entry = gen_params.get("checkpoint")
+
+        return checkpoint_entry if isinstance(checkpoint_entry, dict) else None
+
+    def _sanitize_checkpoint_entry(self, checkpoint_entry: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        """Remove transient/local-only fields from checkpoint metadata."""
+
+        if not checkpoint_entry:
+            return None
+
+        if not isinstance(checkpoint_entry, dict):
+            return checkpoint_entry
+
+        pruned = dict(checkpoint_entry)
+        for key in ("existsLocally", "localPath", "thumbnailUrl", "size", "downloadUrl"):
+            pruned.pop(key, None)
+        return pruned
+
+    def _resolve_image_bytes(self, image_bytes: bytes | None, image_base64: str | None) -> bytes:
+        if image_bytes is not None:
+            return image_bytes
+        if image_base64:
+            try:
+                payload = image_base64.split(",", 1)[1] if "," in image_base64 else image_base64
+                return base64.b64decode(payload)
+            except Exception as exc:  # pragma: no cover - validation guard
+                raise RecipeValidationError(f"Invalid base64 image data: {exc}") from exc
+        raise RecipeValidationError("No image data provided")
+
+    def _normalise_lora_entry(self, lora: dict[str, Any]) -> dict[str, Any]:
+        civitai = lora.get("civitai") or {}
+        civitai_model = civitai.get("model") or {}
+        shared_strength = float(lora.get("weight", lora.get("strength", 1.0)))
+        normalized = {
+            "file_name": lora.get("file_name", "")
+            or (
+                os.path.splitext(os.path.basename(lora.get("localPath", "")))[0]
+                if lora.get("localPath")
+                else ""
+            ),
+            "hash": (lora.get("hash") or "").lower(),
+            "strength": shared_strength,
+            "modelVersionId": lora.get("id") or lora.get("modelVersionId") or civitai.get("id") or None,
+            "modelId": lora.get("modelId") or civitai.get("modelId") or civitai_model.get("id") or None,
+            "modelName": lora.get("name") or lora.get("modelName") or civitai_model.get("name") or "",
+            "modelVersionName": lora.get("version") or lora.get("modelVersionName") or civitai.get("name") or "",
+            "isDeleted": lora.get("isDeleted", False),
+            "exclude": lora.get("exclude", False),
+        }
+        if lora.get("strength_model") is not None:
+            normalized["strength_model"] = float(lora["strength_model"])
+        if lora.get("strength_clip") is not None:
+            normalized["strength_clip"] = float(lora["strength_clip"])
+        if lora.get("metadataSource"):
+            normalized["metadataSource"] = lora["metadataSource"]
+        if lora.get("unresolved"):
+            normalized["unresolved"] = True
+        return normalized
+
+    def _normalise_embedding_entry(
+        self, embedding: dict[str, Any]
+    ) -> dict[str, Any]:
+        civitai = embedding.get("civitai") or {}
+        civitai_model = civitai.get("model") or {}
+        normalized = {
+            "type": "embedding",
+            "file_name": embedding.get("file_name", "")
+            or (
+                os.path.splitext(os.path.basename(embedding.get("localPath", "")))[0]
+                if embedding.get("localPath")
+                else ""
+            ),
+            "hash": (embedding.get("hash") or "").lower(),
+            "modelVersionId": embedding.get("id")
+            or embedding.get("modelVersionId")
+            or civitai.get("id")
+            or 0,
+            "modelId": embedding.get("modelId")
+            or civitai.get("modelId")
+            or civitai_model.get("id")
+            or 0,
+            "modelName": embedding.get("name")
+            or embedding.get("modelName")
+            or civitai_model.get("name")
+            or "",
+            "modelVersionName": embedding.get("version")
+            or embedding.get("modelVersionName")
+            or civitai.get("name")
+            or "",
+            "baseModel": embedding.get("baseModel")
+            or embedding.get("base_model")
+            or civitai.get("baseModel")
+            or "",
+            "isDeleted": embedding.get("isDeleted", False),
+            "exclude": embedding.get("exclude", False),
+        }
+        if embedding.get("unresolved"):
+            normalized["unresolved"] = True
+        return normalized
+
+    async def _find_matching_recipes(
+        self,
+        recipe_scanner,
+        fingerprint: str | None,
+        *,
+        exclude_id: Optional[str] = None,
+    ) -> list[str]:
+        if not fingerprint:
+            return []
+        matches = await recipe_scanner.find_recipes_by_fingerprint(fingerprint)
+        if exclude_id and exclude_id in matches:
+            matches.remove(exclude_id)
+        return matches
+
+    def _derive_recipe_name(self, lora_matches: list[tuple[str, str]]) -> str:
+        recipe_name_parts = [f"{name.strip()}-{float(strength):.2f}" for name, strength in lora_matches[:3]]
+        recipe_name = "_".join(recipe_name_parts)
+        return recipe_name or "recipe"

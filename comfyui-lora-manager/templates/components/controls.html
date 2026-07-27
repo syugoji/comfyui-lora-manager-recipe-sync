@@ -1,0 +1,179 @@
+<div class="controls">
+    {% if page_id != 'recipes' %}
+    <div id="excludedViewBanner" class="excluded-view-banner hidden">
+        <div class="excluded-view-banner__content">
+            <div class="excluded-view-banner__title">
+                <i class="fas fa-eye-slash"></i>
+                <span>{{ t('globalContextMenu.manageExcludedModels.label', default='Excluded Models') }}</span>
+            </div>
+            <button id="excludedViewBackBtn" class="excluded-view-banner__back">
+                <i class="fas fa-arrow-left"></i>
+                <span>{{ t('common.actions.back', default='Back') }}</span>
+            </button>
+        </div>
+    </div>
+    {% endif %}
+    <div class="actions">
+        <div class="action-buttons">
+            <div title="{% if page_id == 'recipes' %}{{ t('recipes.controls.sort.title') }}{% else %}{{ t('loras.controls.sort.title') }}{% endif %}" class="control-group sort-dropdown-group dropdown-group" data-sort-dropdown>
+                <button type="button" class="sort-trigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="sort-trigger__label"></span>
+                    <i class="fas fa-caret-down sort-trigger__caret" aria-hidden="true"></i>
+                </button>
+                <div class="dropdown-menu sort-dropdown-menu" role="listbox"></div>
+                <select id="sortSelect" class="sort-select-native" tabindex="-1" aria-hidden="true">
+                    <optgroup label="{{ t('loras.controls.sort.name') }}">
+                        <option value="name:asc">{{ t('loras.controls.sort.nameAsc') }}</option>
+                        <option value="name:desc">{{ t('loras.controls.sort.nameDesc') }}</option>
+                    </optgroup>
+                    <optgroup label="{% if page_id == 'recipes' %}{{ t('recipes.controls.sort.date') }}{% else %}{{ t('loras.controls.sort.date') }}{% endif %}">
+                        <option value="date:desc">{{ t('loras.controls.sort.dateDesc') }}</option>
+                        <option value="date:asc">{{ t('loras.controls.sort.dateAsc') }}</option>
+                    </optgroup>
+                    {% if page_id != 'recipes' %}
+                    <optgroup label="{{ t('loras.controls.sort.size') }}">
+                        <option value="size:desc">{{ t('loras.controls.sort.sizeDesc') }}</option>
+                        <option value="size:asc">{{ t('loras.controls.sort.sizeAsc') }}</option>
+                    </optgroup>
+                    {% endif %}
+                    {% if page_id != 'embeddings' and page_id != 'recipes' %}
+                        <optgroup label="{{ t('loras.controls.sort.usage', default='Usage') }}">
+                            <option value="usage:desc">{{ t('loras.controls.sort.usageDesc', default='Times used (high to low)') }}</option>
+                            <option value="usage:asc">{{ t('loras.controls.sort.usageAsc', default='Times used (low to high)') }}</option>
+                        </optgroup>
+                    {% endif %}
+                    {% if page_id != 'recipes' %}
+                        <optgroup class="sort-option-versions-count" label="{{ t('loras.controls.sort.versionsCount', default='Local Versions') }}">
+                            <option value="versions_count:desc">{{ t('loras.controls.sort.versionsCountDesc', default='Most versions first') }}</option>
+                            <option value="versions_count:asc">{{ t('loras.controls.sort.versionsCountAsc', default='Fewest versions first') }}</option>
+                        </optgroup>
+                    {% endif %}
+                    {% if page_id == 'recipes' %}
+                        <optgroup label="{{ t('recipes.controls.sort.lorasCount') }}">
+                            <option value="loras_count:desc">{{ t('recipes.controls.sort.lorasCountDesc') }}</option>
+                            <option value="loras_count:asc">{{ t('recipes.controls.sort.lorasCountAsc') }}</option>
+                        </optgroup>
+                        <optgroup label="{{ t('recipes.controls.sort.checkpoint', default='Checkpoint') }}">
+                            <option value="checkpoint:asc">{{ t('recipes.controls.sort.checkpointAsc', default='Checkpoint (A to Z)') }}</option>
+                            <option value="checkpoint:desc">{{ t('recipes.controls.sort.checkpointDesc', default='Checkpoint (Z to A)') }}</option>
+                        </optgroup>
+                    {% endif %}
+                </select>
+            </div>
+            <div title="{% if page_id == 'recipes' %}{{ t('recipes.controls.refresh.title') }}{% else %}{{ t('loras.controls.refresh.title') }}{% endif %}" class="control-group dropdown-group">
+                <button data-action="refresh" class="dropdown-main"><i class="fas fa-sync"></i> <span>{{ t('common.actions.refresh') }}</span></button>
+                <button class="dropdown-toggle" aria-label="Show refresh options">
+                    <i class="fas fa-caret-down"></i>
+                </button>
+                <div class="dropdown-menu">
+                    <div class="dropdown-item" data-action="full-rebuild" title="{% if page_id == 'recipes' %}{{ t('recipes.controls.refresh.fullTooltip', default='Rebuild cache - full rescan of all recipe files') }}{% else %}{{ t('loras.controls.refresh.fullTooltip') }}{% endif %}">
+                        <i class="fas fa-tools"></i> <span>{% if page_id == 'recipes' %}{{ t('loras.controls.refresh.full', default='Rebuild Cache') }}{% else %}{{ t('loras.controls.refresh.full') }}{% endif %}</span>
+                    </div>
+                </div>
+            </div>
+            
+            {% if page_id != 'recipes' %}
+            <div class="control-group">
+                <button data-action="fetch" title="{{ t('loras.controls.fetch.title') }}"><i class="fas fa-download"></i> <span>{{ t('loras.controls.fetch.action') }}</span></button>
+            </div>
+            <div class="control-group">
+                <button data-action="download" title="{{ t('loras.controls.download.title') }}">
+                    <i class="fas fa-cloud-download-alt"></i> <span>{{ t('loras.controls.download.action') }}</span>
+                </button>
+            </div>
+            {% endif %}
+            {% if page_id == 'recipes' %}
+            <div title="{{ t('recipes.controls.import.title') }}" class="control-group">
+                <button onclick="importManager.showImportModal()"><i class="fas fa-file-import"></i> {{ t('recipes.controls.import.action') }}</button>
+            </div>
+            <div title="{{ t('recipes.batchImport.title') }}" class="control-group">
+                <button onclick="batchImportManager.showModal()"><i class="fas fa-layer-group"></i> {{ t('recipes.batchImport.action') }}</button>
+            </div>
+            <div class="control-group">
+                <button id="downloadMissingRecipeResourcesBtn" disabled title="{{ t('loras.bulkOperations.downloadMissingResources', default='Download missing checkpoints, LoRAs, and embeddings') }}">
+                    <i class="fas fa-cloud-download-alt"></i> <span>{{ t('loras.bulkOperations.downloadMissingResources', default='Download missing checkpoints, LoRAs, and embeddings') }}</span>
+                </button>
+            </div>
+            <div class="control-group">
+                <button id="recipePlaylistBtn" title="{{ t('recipes.controls.playlist.title', default='実行リスト（レシピを順番にComfyUIキューへ投入）') }}">
+                    <i class="fas fa-list-ol"></i> <span>{{ t('recipes.controls.playlist.action', default='実行リスト') }}</span>
+                    <span id="recipePlaylistBadge" class="badge"></span>
+                </button>
+            </div>
+            {% endif %}
+            <div class="control-group">
+                <button id="bulkOperationsBtn" data-action="bulk" title="{{ t('loras.controls.bulk.title') }}">
+                    <i class="fas fa-th-large"></i> <span><span>{{ t('loras.controls.bulk.action') }}</span> <div class="shortcut-key">B</div></span>
+                </button>
+            </div>
+            <div class="control-group">
+                <button id="findDuplicatesBtn" data-action="find-duplicates" title="{{ t('loras.controls.duplicates.title') }}">
+                    <i class="fas fa-clone"></i> <span>{{ t('loras.controls.duplicates.action') }}</span>
+                    <span id="duplicatesBadge" class="badge"></span>
+                </button>
+            </div>
+            {% if page_id == 'recipes' %}
+            <div class="control-group" title="お気に入り状態で絞り込み">
+                <select id="recipeFavoriteFilter" aria-label="お気に入りフィルター">
+                    <option value="all">お気に入り: すべて</option>
+                    <option value="only">お気に入りのみ</option>
+                    <option value="exclude">お気に入りを除外</option>
+                </select>
+            </div>
+            <div class="control-group" title="ComfyUIでの再現能力で絞り込み">
+                <select id="recipeReplayCapabilityFilter" aria-label="再現能力フィルター">
+                    <option value="all">再現性: すべて</option>
+                    <option value="exact">完全ワークフロー</option>
+                    <option value="compatible">互換再構築</option>
+                    <option value="unavailable">再現不可</option>
+                </select>
+            </div>
+            <div class="control-group" title="プロンプトの由来で絞り込み">
+                <select id="recipePromptStatusFilter" aria-label="プロンプト状態フィルター">
+                    <option value="all">プロンプト: すべて</option>
+                    <option value="source">元プロンプトあり</option>
+                    <option value="missing">プロンプトなし・参照専用</option>
+                    <option value="generated">AI補完プロンプト</option>
+                </select>
+            </div>
+            {% else %}
+            <div class="control-group">
+                <button id="favoriteFilterBtn" data-action="toggle-favorites" class="favorite-filter" title="{{ t('loras.controls.favorites.title') }}">
+                    <i class="fas fa-star"></i> <span>{{ t('loras.controls.favorites.action') }}</span>
+                </button>
+            </div>
+            {% endif %}
+            {% if page_id != 'recipes' %}
+            <div class="control-group dropdown-group update-filter-group">
+                <button id="updateFilterBtn" data-action="toggle-updates" class="dropdown-main update-filter" title="{{ t('loras.controls.updates.title') }}">
+                    <i class="fas fa-exclamation-circle"></i> <span>{{ t('loras.controls.updates.action') }}</span>
+                </button>
+                <button id="updateFilterMenuToggle" class="dropdown-toggle" aria-label="{{ t('loras.controls.updates.menuLabel') }}">
+                    <i class="fas fa-caret-down"></i>
+                </button>
+                <div class="dropdown-menu">
+                    <div id="checkUpdatesMenuItem" class="dropdown-item" data-action="check-updates" title="{{ t('loras.controls.updates.checkTooltip') }}">
+                        <i class="fas fa-sync-alt"></i> <span>{{ t('loras.controls.updates.check') }}</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            <div id="customFilterIndicator" class="control-group hidden">
+                <div class="filter-active">
+                    <i class="fas fa-filter"></i> <span class="customFilterText" title=""></span>
+                    <i class="fas fa-times-circle clear-filter"></i>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls-right">
+            <div class="control-group doctor-control-group">
+                <button id="doctorTriggerBtn" class="doctor-trigger" title="{{ t('doctor.buttonTitle', default='Run diagnostics and common fixes') }}">
+                    <i class="fas fa-stethoscope"></i>
+                    <span>{{ t('doctor.title', default='Doctor') }}</span>
+                    <span id="doctorStatusBadge" class="doctor-status-badge hidden" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

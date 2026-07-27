@@ -1,0 +1,17 @@
+{
+  "name": "comfyui-lora-manager-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:js && npm run test:vue",
+    "test:js": "vitest run",
+    "test:vue": "cd vue-widgets && npx vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "node scripts/run_frontend_coverage.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "vitest": "^1.6.0"
+  }
+}

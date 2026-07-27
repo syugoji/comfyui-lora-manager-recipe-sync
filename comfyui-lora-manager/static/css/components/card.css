@@ -1,0 +1,941 @@
+/* Card grid layout */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); /* Base size */
+    gap: 12px; /* Consistent gap for both row and column spacing */
+    row-gap: 20px; /* Increase vertical spacing between rows */
+    margin-top: var(--space-2);
+    padding-top: 4px;
+    padding-bottom: 4px;
+    width: 100%; /* Ensure it takes full width of container */
+    max-width: 1400px; /* Base container width */
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.model-card {
+    background: var(--lora-surface);
+    border: 1px solid var(--lora-border);
+    border-radius: var(--border-radius-base);
+    backdrop-filter: blur(16px);
+    transition: transform var(--transition-fast) ease-out, box-shadow var(--transition-fast) ease-out, border-color var(--transition-fast) ease-out;
+    aspect-ratio: 896/1152; /* Preserve aspect ratio */
+    max-width: 260px; /* Base size */
+    min-width: 200px; /* Prevent cards from becoming too narrow */
+    width: 100%;
+    margin: 0 auto;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.model-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--lora-accent);
+}
+
+.model-card:focus-visible {
+    outline: 2px solid var(--lora-accent);
+    outline-offset: 2px;
+}
+
+/* Responsive adjustments for 1440p screens (2K) */
+@media (min-width: 2150px) {
+    .card-grid {
+        max-width: 1800px; /* Increased for 2K screens */
+        grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    }
+    
+    .model-card {
+        max-width: 270px;
+    }
+}
+
+/* Responsive adjustments for 4K screens */
+@media (min-width: 3000px) {
+    .card-grid {
+        max-width: 2400px; /* Increased for 4K screens */
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+    
+    .model-card {
+        max-width: 280px;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+    .card-grid {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+    
+    .model-card {
+        max-width: 240px;
+    }
+}
+
+/* Card Preview and Footer Overlay */
+.card-preview {
+    position: relative;
+    width: 100%;
+    height: 100%; /* This should work with aspect-ratio on parent */
+    border-radius: var(--border-radius-base);
+    overflow: hidden;
+    flex-shrink: 0; /* Prevent shrinking */
+    min-height: 0; /* Fix for potential flexbox sizing issue in Firefox */
+}
+
+/* Smaller text for medium density */
+.medium-density .model-name {
+    font-size: 0.95em;
+    max-height: 3em; /* Increased from 2.6em */
+}
+
+.medium-density .base-model-label {
+    font-size: 0.85em;
+    max-width: 120px;
+}
+
+.medium-density .card-actions i {
+    font-size: 0.98em;
+    padding: 4px;
+}
+
+/* Smaller text for compact mode */
+.compact-density .model-name {
+    font-size: 0.9em;
+    max-height: 2.8em; /* Increased from 2.4em */
+}
+
+.compact-density .base-model-label {
+    font-size: 0.8em;
+    max-width: 110px;
+}
+
+/* Compact mode: hide sub-type to save space */
+.compact-density .model-sub-type,
+.compact-density .model-separator {
+    display: none;
+}
+
+.compact-density .card-actions i {
+    font-size: 0.95em;
+    padding: 3px;
+}
+
+.compact-density .model-info {
+    padding-bottom: 2px;
+}
+
+.card-preview img,
+.card-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top; /* Align the top of the image with the top of the container */
+}
+
+/* NSFW Content Blur */
+.card-preview.blurred img,
+.card-preview.blurred video {
+    filter: blur(25px);
+}
+
+.nsfw-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.nsfw-warning {
+    text-align: center;
+    color: white;
+    background: rgba(0, 0, 0, 0.6);
+    padding: var(--space-2);
+    border-radius: var(--border-radius-base);
+    backdrop-filter: blur(4px);
+    max-width: 80%;
+    pointer-events: auto;
+}
+
+.nsfw-warning p {
+    margin: 0 0 var(--space-1);
+    font-weight: bold;
+    font-size: 1.1em;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+/* NSFW warning adjustments for medium density */
+.medium-density .nsfw-warning {
+    padding: calc(var(--space-2) * 0.85);
+    max-width: 70%;
+}
+
+.medium-density .nsfw-warning p {
+    font-size: 0.95em;
+    margin-bottom: calc(var(--space-1) * 0.85);
+}
+
+.medium-density .show-content-btn {
+    font-size: 0.85em;
+    padding: 3px calc(var(--space-1) * 0.85);
+}
+
+/* NSFW warning adjustments for compact density */
+.compact-density .nsfw-warning {
+    padding: calc(var(--space-2) * 0.7);
+    max-width: 60%;
+}
+
+.compact-density .nsfw-warning p {
+    font-size: 0.85em;
+    margin-bottom: calc(var(--space-1) * 0.7);
+}
+
+.compact-density .show-content-btn {
+    font-size: 0.8em;
+    padding: 2px var(--space-1);
+}
+
+.toggle-blur-btn {
+    position: absolute;
+    left: var(--space-1);
+    top: var(--space-1);
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    z-index: 3;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.toggle-blur-btn:hover {
+    background: rgba(0, 0, 0, 0.7);
+    transform: scale(1.1);
+}
+
+.toggle-blur-btn i {
+    font-size: 0.9em;
+}
+
+.show-content-btn {
+    background: var(--lora-accent);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-xs);
+    padding: 4px var(--space-1);
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.show-content-btn:hover {
+    background: oklch(58% 0.28 256);
+    transform: scale(1.05);
+}
+
+/* Adjust base model label positioning when toggle button is present */
+.base-model-label.with-toggle {
+    margin-left: 28px; /* Make room for the toggle button */
+}
+
+/* Ensure card actions remain clickable */
+.card-header .card-actions {
+    z-index: 3;
+}
+
+/* New styles for hover reveal mode */
+.hover-reveal .card-header,
+.hover-reveal .card-footer {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.hover-reveal .model-card:hover .card-header,
+.hover-reveal .model-card:hover .card-footer {
+    opacity: 1;
+}
+
+.card-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent 15%, oklch(0% 0 0 / 0.75));
+    backdrop-filter: blur(var(--card-blur-amount, 8px));
+    color: white;
+    padding: var(--space-1);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;  /* Changed from flex-end to allow for text wrapping */
+    min-height: auto;
+    gap: var(--space-1);  /* Add gap between model info and actions */
+}
+
+.card-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(oklch(0% 0 0 / 0.75), transparent 85%);
+    backdrop-filter: blur(var(--card-blur-amount, 8px));
+    color: white;
+    padding: var(--space-1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 1;
+    min-height: 20px;
+}
+
+/* Gradient overlay on right side for icon readability */
+.card-header::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 100px;
+    height: 100%;
+    background: linear-gradient(to left, oklch(0% 0 0 / 0.4) 0%, transparent 100%);
+    pointer-events: none;
+    border-top-right-radius: var(--border-radius);
+}
+
+.card-header-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.card-header-info .base-model-label {
+    flex-shrink: 1;
+}
+
+.recipe-replay-capability {
+    position: absolute;
+    top: 34px;
+    left: var(--space-1);
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 112px;
+    padding: 2px 5px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    color: white;
+    font-size: 0.68em;
+    font-weight: 650;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(5px);
+}
+
+.recipe-replay-capability span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.recipe-replay-capability.exact { background: rgba(20, 125, 70, 0.88); }
+.recipe-replay-capability.compatible { background: rgba(163, 105, 12, 0.9); }
+.recipe-replay-capability.unavailable { background: rgba(153, 34, 43, 0.9); }
+.recipe-replay-capability.analyzing { background: rgba(70, 70, 76, 0.78); }
+
+.recipe-prompt-status {
+    position: absolute;
+    top: 58px;
+    left: var(--space-1);
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 5px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    color: white;
+    font-size: 0.68em;
+    font-weight: 650;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(5px);
+}
+
+.recipe-prompt-status.missing { background: rgba(75, 79, 87, 0.9); }
+.recipe-prompt-status.generated { background: rgba(91, 62, 150, 0.9); }
+.recipe-prompt-status.generated.modified {
+    max-width: calc(100% - 14px);
+    background: rgba(109, 40, 217, 0.94);
+}
+
+.recipe-notes-tooltip {
+    position: absolute;
+    top: 34px;
+    right: var(--space-2);
+    z-index: 8;
+    display: none;
+    width: min(300px, calc(100% - 24px));
+    max-height: 180px;
+    overflow: auto;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: var(--border-radius-xs);
+    background: rgba(24, 24, 28, 0.96);
+    color: white;
+    font-size: 0.78em;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    box-shadow: 0 7px 22px rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+}
+
+.model-card:hover .recipe-notes-tooltip,
+.recipe-note-indicator:hover ~ .recipe-notes-tooltip {
+    display: block;
+}
+
+.card-actions i {
+    cursor: pointer;
+    color: white;
+    transition: opacity 0.2s, transform 0.15s ease;
+    font-size: 1.0em; /* Increased from 0.9em for better visibility */
+    width: 16px; /* Fixed width for consistent spacing */
+    height: 16px; /* Fixed height for larger touch target */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    padding: 4px; /* Add padding to increase clickable area */
+    box-sizing: content-box; /* Ensure padding adds to dimensions */
+    position: relative; /* For proper positioning */
+    margin: 0; /* Reset margin */
+}
+
+.card-actions i::before {
+    position: absolute; /* Position the icon glyph */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Center the icon */
+}
+
+.card-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: var(--space-1);
+    align-items: flex-end;
+    align-self: flex-end;
+}
+
+.card-actions i:hover,
+.card-actions i:focus-visible {
+    opacity: 0.9;
+    transform: scale(1.1);
+    background-color: rgba(255, 255, 255, 0.1);
+    outline: 2px solid var(--lora-accent);
+    outline-offset: 2px;
+    border-radius: var(--border-radius-xs);
+}
+
+.favorite-active {
+    color: var(--favorite-color) !important;
+    text-shadow: 0 0 5px var(--favorite-glow);
+}
+
+@media (max-width: 1200px) {
+    .card-grid {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    
+    .model-card {
+        max-width: 240px;
+        min-width: 180px;
+    }
+}
+@media (max-width: 768px) {
+    .card-grid {
+        grid-template-columns: minmax(260px, 1fr); /* Adjusted minimum size for mobile */
+    }
+    
+    .model-card {
+        max-width: 100%; /* Allow cards to fill available space on mobile */
+        min-width: 200px;
+    }
+}
+
+.model-link {
+    margin-top: var(--space-1);
+}
+
+.model-link a {
+    color: var(--lora-accent);
+    text-decoration: none;
+    font-size: 1.1em;
+    transition: opacity 0.2s;
+    text-shadow: none;
+}
+
+.model-link a:hover,
+.model-link a:focus-visible {
+    opacity: 0.8;
+    text-decoration: none;
+    outline: 2px solid var(--lora-accent);
+    outline-offset: 2px;
+    border-radius: var(--border-radius-xs);
+}
+
+/* Updated model name to fix text cutoff issues */
+.model-name {
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    font-size: 0.95em;
+    word-break: break-word;
+    display: block;
+    max-height: 4.2em; /* Allow up to 3 lines */
+    overflow: hidden;
+    /* Add line height for consistency */
+    line-height: 1.4;
+}
+
+.model-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding-bottom: 6px; /* Increased from 4px to give more room for text */
+}
+
+.base-model {
+    display: inline-block;
+    background: var(--surface-hover, oklch(95% 0 0));
+    padding: 2px 6px;
+    border-radius: var(--border-radius-xs);
+    margin-right: 6px;
+}
+
+.file-size,
+.modified {
+    display: block;
+    margin-top: 2px;
+}
+
+.base-model-label {
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    background: rgba(255, 255, 255, 0.12);
+    padding: 2px 6px;
+    border-radius: var(--border-radius-xs);
+    backdrop-filter: blur(4px);
+    font-size: 0.8em;
+    line-height: 1.2;
+    font-weight: 500;
+}
+
+/* Subtle separator between sub-type and base model */
+.model-separator {
+    width: 1px;
+    height: 0.6em;
+    background: rgba(255, 255, 255, 0.25);
+    flex-shrink: 0;
+}
+
+/* Sub-type abbreviation styling */
+.model-sub-type {
+    opacity: 0.9;
+    flex-shrink: 0;
+}
+
+/* Base model abbreviation styling */
+.model-base-type {
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Style for version name */
+.version-name {
+    display: inline-block;
+    color: rgba(255,255,255,0.8); /* Muted white */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    font-size: 0.85em;
+    word-break: break-word;
+    overflow: hidden;
+    line-height: 1.4;
+    margin-top: 2px;
+    opacity: 0.8; /* Slightly transparent for better readability */
+    border: 1px solid rgba(255,255,255,0.25); /* Subtle border */
+    border-radius: var(--border-radius-xs);
+    padding: 1px 6px;
+    background: rgba(0,0,0,0.18); /* Optional: subtle background for contrast */
+}
+
+/* Clickable version count link (shown in group-by-model mode) */
+.version-count-link {
+    display: inline-block;
+    color: var(--color-accent);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    font-size: 0.85em;
+    line-height: 1.4;
+    margin-top: 2px;
+    border: 1px solid var(--color-accent-border);
+    border-radius: var(--border-radius-xs);
+    padding: 1px 6px;
+    background: var(--color-accent-subtle);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.version-count-link:hover {
+    background: var(--color-accent-border);
+    border-color: var(--color-accent-transparent);
+}
+
+/* Medium density adjustments for version count link */
+.medium-density .version-count-link {
+    font-size: 0.8em;
+}
+
+.medium-density .badge-version-unit .version-count-link {
+    max-width: 90px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Compact density adjustments for version count link */
+.compact-density .version-count-link {
+    font-size: 0.75em;
+}
+
+.compact-density .badge-version-unit .version-count-link {
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Version row — flex container for badges + version names */
+.version-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+/* Badge + version-name binding: they wrap as a single unit */
+.badge-version-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    flex-shrink: 0;
+}
+
+/* Medium density adjustments for version name */
+.medium-density .version-name {
+    font-size: 0.8em;
+}
+
+.medium-density .badge-version-unit .version-name {
+    max-width: 90px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Compact density adjustments for version name */
+.compact-density .version-name {
+    font-size: 0.75em;
+}
+
+.compact-density .badge-version-unit .version-name {
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.medium-density .version-row {
+    gap: 2px;
+}
+
+/* HIGH / LOW badges — shown inline before version name in card footer */
+.hl-badge {
+    display: inline-block;
+    font-size: 0.7em;
+    font-weight: 600;
+    line-height: 1.1;
+    padding: 1px 5px;
+    border-radius: var(--border-radius-xs);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    white-space: nowrap;
+}
+
+.hl-badge--high {
+    color: oklch(75% 0.12 230);
+    background: oklch(55% 0.15 240 / 0.25);
+    border-color: oklch(60% 0.18 250 / 0.3);
+}
+
+.hl-badge--low {
+    color: oklch(78% 0.10 185);
+    background: oklch(50% 0.10 190 / 0.25);
+    border-color: oklch(55% 0.12 195 / 0.3);
+}
+
+.medium-density .hl-badge {
+    font-size: 0.65em;
+}
+
+.compact-density .hl-badge {
+    font-size: 0.62em;
+    padding: 0px 4px;
+}
+
+/* Hide version-related elements when setting is disabled */
+body.hide-card-version .civitai-version,
+body.hide-card-version .hl-badge {
+    display: none;
+}
+
+/* Compact density adjustments for version name */
+.compact-density .version-name {
+    font-size: 0.75em;
+}
+
+/* Prevent text selection on cards and interactive elements */
+.model-card,
+.model-card *,
+.card-actions,
+.card-actions i,
+.toggle-blur-btn,
+.show-content-btn,
+.card-preview img,
+.card-preview video,
+.card-footer,
+.card-header,
+.model-name,
+.base-model-label {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.lora-count {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 8px;
+    border-radius: var(--border-radius-xs);
+    font-size: 0.85em;
+    position: relative;
+}
+
+.lora-count.ready {
+    background: rgba(46, 204, 113, 0.3);
+}
+
+.lora-count.missing {
+    background: rgba(231, 76, 60, 0.3);
+}
+
+.placeholder-message {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    background: var(--lora-surface-alt);
+    border-radius: var(--border-radius-base);
+}
+
+/* Virtual scrolling specific styles - updated */
+.virtual-scroll-item {
+    position: absolute;
+    box-sizing: border-box;
+    transition: transform 160ms ease-out;
+    margin: 0;
+    width: 100%;
+}
+
+/* Allow cards to grow beyond 260px in virtual scroll mode */
+.virtual-scroll-item.model-card {
+    max-width: none;
+}
+
+.virtual-scroll-item:hover {
+    transform: translateY(-2px); /* Keep hover effect */
+    z-index: 1; /* Ensure hovered items appear above others */
+}
+
+/* When using virtual scroll, adjust container */
+.card-grid.virtual-scroll {
+    display: block;
+    position: relative;
+    margin: 0; /* Remove auto margins - positioning handled by VirtualScroller leftOffset */
+    padding: 4px 0; /* Add top/bottom padding equivalent to card padding */
+    height: auto;
+    width: 100%;
+    max-width: none; /* Remove max-width constraint - handled by VirtualScroller */
+    box-sizing: border-box; /* Include padding in width calculation */
+    overflow-x: hidden; /* Prevent horizontal overflow */
+}
+
+/* For larger screens, allow more space for the cards */
+@media (min-width: 2150px) {
+    .card-grid.virtual-scroll {
+        max-width: 1800px;
+    }
+}
+
+@media (min-width: 3000px) {
+    .card-grid.virtual-scroll {
+        max-width: 2400px;
+    }
+}
+
+/* Grid-scoped loading overlay (replaces full-page overlay for VirtualScroller refreshes) */
+.grid-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--lora-bg-transparent, oklch(0% 0 0 / 0.3));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* Add after the existing .model-card:hover styles */
+
+@keyframes update-pulse {
+    0% { box-shadow: 0 0 0 0 var(--lora-accent-transparent); }
+    50% { box-shadow: 0 0 0 4px var(--lora-accent-transparent); }
+    100% { box-shadow: 0 0 0 0 var(--lora-accent-transparent); }
+  }
+  
+  /* Add semi-transparent version of accent color for animation */
+  :root {
+    --lora-accent-transparent: oklch(var(--lora-accent-l) var(--lora-accent-c) var(--lora-accent-h) / 0.6);
+  }
+  
+  .model-card.updated {
+    animation: update-pulse 1.2s ease-out;
+  }
+  
+  /* Add a subtle updated tag that fades in and out */
+  .update-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--lora-accent);
+    color: white;
+    border-radius: var(--border-radius-xs);
+    padding: 3px 6px;
+    font-size: 0.75em;
+    opacity: 0;
+    transform: translateY(-5px);
+    z-index: 4;
+    animation: update-tag 1.8s ease-out forwards;
+  }
+  
+  @keyframes update-tag {
+    0% { opacity: 0; transform: translateY(-5px); }
+    15% { opacity: 1; transform: translateY(0); }
+    85% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(0); }
+  }
+
+.model-card.has-update {
+    border-color: color-mix(in oklab, var(--badge-update-bg) 60%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--badge-update-bg) 45%, transparent);
+}
+
+.model-update-badge {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 4px;
+    background: var(--badge-update-bg);
+    color: var(--badge-update-text);
+    font-size: 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px var(--badge-update-glow);
+    border: 1px solid color-mix(in oklab, var(--badge-update-bg) 55%, transparent);
+}
+
+.model-update-badge i {
+    margin-left: 1px;
+    line-height: 1;
+}
+
+.model-skip-refresh-badge {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 3px;
+    background: var(--badge-skip-refresh-bg);
+    color: var(--badge-skip-refresh-text);
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px var(--badge-skip-refresh-glow);
+    border: 1px solid color-mix(in oklab, var(--badge-skip-refresh-bg) 70%, transparent);
+    opacity: 0.85;
+}
+
+.model-skip-refresh-badge i {
+    margin-left: 0;
+    line-height: 1;
+}
+
+.excluded-model {
+    border-style: dashed;
+}
+
+.model-excluded-badge {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 3px;
+    background: color-mix(in oklab, var(--warning-color, #d97706) 85%, white 15%);
+    color: white;
+    font-size: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.9;
+}

@@ -1,0 +1,60 @@
+import os
+import logging
+from typing import Dict
+
+from .base_model_service import BaseModelService
+from .auto_tag_service import extract_auto_tags
+from ..utils.models import CheckpointMetadata
+from ..config import config
+
+logger = logging.getLogger(__name__)
+
+class CheckpointService(BaseModelService):
+    """Checkpoint-specific service implementation"""
+    
+    def __init__(self, scanner, update_service=None):
+        """Initialize Checkpoint service
+        
+        Args:
+            scanner: Checkpoint scanner instance
+            update_service: Optional service for remote update tracking.
+        """
+        super().__init__("checkpoint", scanner, CheckpointMetadata, update_service=update_service)
+    
+    async def format_response(self, checkpoint_data: Dict) -> Dict:
+        """Format Checkpoint data for API response"""
+        # Get sub_type from cache entry (new canonical field)
+        sub_type = checkpoint_data.get("sub_type", "checkpoint")
+        
+        return {
+            "model_name": checkpoint_data["model_name"],
+            "file_name": checkpoint_data["file_name"],
+            "preview_url": config.get_preview_static_url(checkpoint_data.get("preview_url", "")),
+            "preview_nsfw_level": checkpoint_data.get("preview_nsfw_level", 0),
+            "base_model": checkpoint_data.get("base_model", ""),
+            "folder": checkpoint_data["folder"],
+            "sha256": checkpoint_data.get("sha256", ""),
+            "file_path": checkpoint_data["file_path"].replace(os.sep, "/"),
+            "file_size": checkpoint_data.get("size", 0),
+            "modified": checkpoint_data.get("modified", ""),
+            "tags": checkpoint_data.get("tags", []),
+            "from_civitai": checkpoint_data.get("from_civitai", True),
+            "usage_count": checkpoint_data.get("usage_count", 0),
+            "notes": checkpoint_data.get("notes", ""),
+            "sub_type": sub_type,
+            "favorite": checkpoint_data.get("favorite", False),
+            "exclude": bool(checkpoint_data.get("exclude", False)),
+            "update_available": bool(checkpoint_data.get("update_available", False)),
+            "skip_metadata_refresh": bool(checkpoint_data.get("skip_metadata_refresh", False)),
+            "civitai": self.filter_civitai_data(checkpoint_data.get("civitai", {}), minimal=True),
+            "auto_tags": checkpoint_data.get("auto_tags") or extract_auto_tags(checkpoint_data),
+            "version_count": checkpoint_data.get("version_count"),
+        }
+    
+    def find_duplicate_hashes(self) -> Dict:
+        """Find Checkpoints with duplicate SHA256 hashes"""
+        return self.scanner._hash_index.get_duplicate_hashes()
+    
+    def find_duplicate_filenames(self) -> Dict:
+        """Find Checkpoints with conflicting filenames"""
+        return self.scanner._hash_index.get_duplicate_filenames()

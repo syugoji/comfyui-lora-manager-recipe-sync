@@ -1,0 +1,15 @@
+{
+  "_comment": "このファイルを config.json へコピーして値を埋めてください。config.json は .gitignore 済みです。各項目は同名の環境変数でも渡せます（環境変数が優先）。",
+
+  "raindrop_token": "",
+  "collection_id": "",
+  "recipe_dir": "",
+
+  "civitai_api_key": "",
+  "comfy_base_url": "http://127.0.0.1:8188",
+  "lora_models_dir": "",
+  "checkpoint_models_dir": "",
+
+  "_prompt_lora_fallbacks_comment": "プロンプトの <lora:名前:強度> にしか痕跡が無く、Civitai からも消えた LoRA を、自分で用意したミラーから復元するための枠です。既定は空。url と sha256 の両方が必要で、ダウンロード後にハッシュを照合し、一致しないものは破棄します。何を登録するかは利用者の責任です。",
+  "prompt_lora_fallbacks": {}
+}
