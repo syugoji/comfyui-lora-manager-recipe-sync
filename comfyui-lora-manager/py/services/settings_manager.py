@@ -107,6 +107,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "backup_retention_count": 5,
     "use_new_license_icons": True,
     "group_by_model": False,
+    # Raindrop → レシピ同期（別プロセスの civitai-recipe-sync スクリプトへ渡す）
+    "raindrop_token": "",
+    "raindrop_collection_id": "",
+    "raindrop_sync_script_path": "",
+    "raindrop_sync_comfy_base_url": "",
 }
 
 

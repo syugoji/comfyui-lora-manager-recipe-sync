@@ -105,7 +105,71 @@ upstream は画像ページ側の情報を優先していたが、このフォ�
 - 成人向けを含める場合は `nsfw=X&browsingLevel=255` が要る
 - `meta` は `{"id": .., "meta": {..}}` と**1段包まれて返ることがある**
 
-## 8. 【この配布版で除外】同梱しないもの
+## 8. 【この配布版で追加】Raindrop 同期をUIから起動できるようにした
+
+レシピ画面のツールバーに「Raindrop 同期」ボタンを足し、
+同梱スクリプト `civitai-recipe-sync/civitai_image_download.py` を**子プロセスとして起動**できるようにした。
+コマンドラインを開かずに同期できる。
+
+- `py/services/raindrop_sync_service.py`（新規）— スクリプトの起動・進捗集約・中断。
+  **スクリプトを import しない**（ライセンス境界。ファイル冒頭に理由を書いてある）
+- `py/routes/recipe_route_registrar.py` — `/api/lm/recipes/raindrop-sync/{start,progress,cancel}` を追加
+- `py/routes/handlers/recipe_handlers.py` — `RaindropSyncHandler`（起動・進捗・中断の3本）
+- `py/services/settings_manager.py` — `raindrop_token` / `raindrop_collection_id` /
+  `raindrop_sync_script_path` / `raindrop_sync_comfy_base_url` を追加
+- `py/routes/handlers/misc_handlers.py` — **`raindrop_token` はフロントへ返さない**。
+  既存の `civitai_api_key` と同じ扱いで、設定済みかどうかの真偽値 `raindrop_token_set` だけを返す
+- `templates/components/raindrop_sync_modal.html`（新規）,
+  `static/js/managers/RaindropSyncManager.js`（新規）— 進捗・成功/失敗件数・失敗した画像IDを表示
+- `templates/components/modals/settings_modal.html` — 設定画面に Raindrop 節を追加（トークンはマスク表示）
+- `locales/en.json`, `locales/ja.json` — 上記の文言
+
+子プロセスへは環境変数で設定を渡す（`RAINDROP_TOKEN` / `RAINDROP_COLLECTION_ID` /
+`LORA_RECIPE_DIR` / `COMFY_BASE_URL` ほか）。スクリプトは
+`CIVITAI_SYNC_EVENT_STREAM=1` のとき `@@RDSYNC@@ {...}` の1行1件で進捗を出し、
+`CIVITAI_SYNC_NON_INTERACTIVE=1` のとき終了時の `input()` 待ちを飛ばす。
+**引数なしで直接叩いたときの挙動は変えていない**（従来のダブルクリック起動がそのまま通る）。
+
+`COMFY_BASE_URL` は「設定 → リクエストの出所 → `http://127.0.0.1:8188`」の順で決まるので、
+ComfyUI を既定以外のポートで動かしていても当たる。
+
+トークンは起動前に **ASCII のみ・空白なし** を検査する。非ASCIIのまま走らせると
+`requests` が Authorization ヘッダを latin-1 でエンコードできず
+「`'latin-1' codec can't encode characters`」しか出ず原因が読めないため
+（実測で踏んだ。貼り付け事故だった）。エラー文には最初の非ASCII位置と全文字数だけを載せ、
+**値そのものは画面にもログにも出さない**。
+
+**実測（2026-07-28・330件のブックマークを持つ実コレクション）**:
+レシピ0件の状態からボタンで起動し、**15件が保存されるところまで確認**（成功15/失敗0）。
+中断ボタンで子プロセスが止まり、保存済みの15件はそのまま残る。
+
+**ブックマーク数と対象数がずれる理由は画面に出す。** 上の実測では 330件中 325件が対象で、
+残り5件の理由が分からなかった。対象外を
+「Civitai画像URLでない／同じ画像IDが重複／同期済み／リンクが空」へ分類して数と実URLを出す
+（`planned` イベントと進捗画面）。**`civitai.com` と `civitai.red` は同じ画像IDのミラー**なので、
+両方ブックマークされていると重複として1件に畳まれる。
+`civitai.com/posts/…`・`civitai.com/models/…`・`image.civitai.com/…`（CDN直リンク）は
+画像ページURLではないので対象外になる。
+
+**対象外5件の実内訳（2026-07-28 実測・レシピ0件と同条件）**:
+
+| 分類 | 件数 |
+|---|---|
+| 同じ画像IDが重複 | **5** |
+| Civitai画像URLでない | 0 |
+| 同期済み | 0 |
+| リンクが空 | 0 |
+
+`330 = 325 + 5` が分類だけで閉じる（分類軸の追加は不要だった）。
+**5件はすべて「まったく同じURLが2回ブックマークされていた」もの**で、
+`.com` / `.red` のミラー対ではなかった。上の「両方ブックマークされていると畳まれる」は
+コード上そうなるという説明であって、この実データの原因ではない。
+根拠 — 重複した5つの画像IDについて Raindrop の `_id` は全10件が別物で、
+各ペアの `created` は 0.5〜7秒差（例: `133999893` が `18:43:39.142Z` と `18:43:39.660Z`）。
+ページングで同じ項目を2回拾った取得側の事故ではないことは、
+330件の `_id` が全件一意であることで確認した。
+
+## 9. 【この配布版で除外】同梱しないもの
 
 配布物には作者のローカル環境由来のデータを入れていない。初回起動時に再生成される。
 
@@ -121,9 +185,34 @@ upstream は画像ページ側の情報を優先していたが、このフォ�
 
 `pytest tests/`（`syrupy` / `hypothesis` を要する2モジュールを除く）:
 
-- **1,444 passed / 27 failed**
-- この 27件は**改造前のフォークでも同じ27件が落ちる**（1,442 passed / 27 failed）。
-  内訳は i18n のロケールキー欠落、`lora_cycler`、`download_manager` の zip 展開、`checkpoint_scanner`。
-  上記7の変更による回帰ではない（同一条件の対照実行で確認済み）。
-- フロントエンドの `vitest` は `node_modules/` を同梱していないため未実行。
-  実行する場合は `npm install` の後に `npx vitest run`。
+- **1,478 passed / 16 failed**（2026-07-28 実測）。
+- 残る16件は **上流 v1.1.6 でも同じ16件が落ちる**。
+  - 内訳: `tests/config/test_config_save_paths.py` 10件 /
+    `tests/nodes/test_lora_cycler.py` 3件 /
+    `tests/services/test_download_manager_error.py` 3件（zip 展開時のパス区切り）。
+  - 根拠は**件数の一致ではなくテスト名の集合比較**。素の v1.1.6 を同じ条件で走らせると
+    19 failed / 1,357 passed で、その失敗集合はこのフォークの16件を**完全に含む**。
+    「フォークだけで落ちるテスト」は**0件**。
+  - 逆に上流だけで落ちる3件（`test_misc_routes` 2件・`test_persistent_recipe_cache` 1件）は
+    このフォークでは通る。上流にはさらに Windows 固有の teardown エラー21件
+    （`PermissionError: WinError 32`・一時sqliteの掴みっぱなし）があるが、こちらも出ない。
+
+> **以前ここに書いていた「27 failed。改造前のフォークでも同じ27件」は誤りだった。**
+> 件数だけを比べていたため、**i18n の9件がフォーク由来だったこと**を見落としていた。
+> 上流は en 1,589キーに対し他ロケールの欠落が0で、i18n テストは通る。
+> フォークが en へ59キー（Raindrop 同期 41 ＋ 実行リスト・一括DL等 18）を追加しながら
+> **en と ja にしか入れていなかった**ため、残り8ロケールで各59キーが欠けていた。
+> さらに static のコードが en に存在しない8キーを参照していた。2026-07-28 に全部埋めて解消。
+> 併せて、フォークが変えた仕様に追随できていなかった2件も直した
+> （`download_manager` のハッシュ照合が実バイト検証になった件、
+> 永続キャッシュが壊れた safetensors を捨てるようになった件）。
+
+**フロントエンド（vitest）**:
+
+- `tests/frontend/**` — **54 files / 436 tests すべて通過**。
+- `vue-widgets/tests/**` — **4 files / 68 tests すべて通過**。
+- 実行手順: `npm ci` の後 `npx vitest run`、`cd vue-widgets && npm ci && npx vitest run`。
+- 初回実行で1ファイルが収集できずに落ちた。`web/comfyui/a1111_generation_patch.js` が
+  ブラウザへ配信される絶対URL `/loras_static/js/utils/genParamsMapper.js` を import しており、
+  vitest はこのルートを知らないため。サーバ側の `add_static("/loras_static", static/)` と
+  同じ対応付けを `vitest.config.js` の `resolve.alias` に足して解消した（実行時の欠陥ではない）。

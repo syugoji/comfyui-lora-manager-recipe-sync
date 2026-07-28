@@ -55,6 +55,13 @@ const DEFAULT_SETTINGS_BASE = Object.freeze({
     strip_lora_on_copy: false,
     use_new_license_icons: true,
     group_by_model: false,
+    // Raindrop → レシピ同期。トークンの実値はフロントへ来ない
+    // （設定済みかどうかは raindrop_token_set で受け取る）。
+    raindrop_token: '',
+    raindrop_token_set: false,
+    raindrop_collection_id: '',
+    raindrop_sync_script_path: '',
+    raindrop_sync_comfy_base_url: '',
 });
 
 export function createDefaultSettings() {

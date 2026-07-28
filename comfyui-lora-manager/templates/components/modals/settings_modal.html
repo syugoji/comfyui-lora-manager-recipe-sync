@@ -797,6 +797,87 @@
                             </div>
                         </div>
 
+                        <!-- Raindrop Sync -->
+                        <div class="settings-subsection">
+                            <div class="settings-subsection-header">
+                                <h4>{{ t('settings.raindropSync.title') }}</h4>
+                            </div>
+
+                            <!-- Raindrop token (masked, never pre-filled) -->
+                            <div class="setting-item api-key-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <label>{{ t('settings.raindropSync.tokenLabel') }}</label>
+                                        <i class="fas fa-info-circle info-icon" data-tooltip="{{ t('settings.raindropSync.tokenHelp') }}"></i>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div id="raindropTokenStatus" class="api-key-status">
+                                            <span id="raindropTokenStatusText" class="api-key-status-text api-key-status--unconfigured">
+                                                <i class="fas fa-times-circle text-error"></i>
+                                                {{ t('settings.raindropSync.tokenNotConfigured') }}
+                                            </span>
+                                            <button type="button" class="secondary-btn" id="raindropTokenActionBtn" onclick="settingsManager.editRaindropToken()">
+                                                {{ t('settings.raindropSync.tokenSet') }}
+                                            </button>
+                                        </div>
+                                        <div id="raindropTokenEdit" class="api-key-edit is-hidden">
+                                            <div class="api-key-input">
+                                                <input type="text"
+                                                    id="raindropToken"
+                                                    class="api-key-masked"
+                                                    placeholder="{{ t('settings.raindropSync.tokenPlaceholder') }}"
+                                                    autocomplete="off"
+                                                    data-mask="css" />
+                                                <button type="button" class="toggle-visibility">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                            <button type="button" class="primary-btn" onclick="settingsManager.saveRaindropToken()">{{ t('common.actions.save') }}</button>
+                                            <button type="button" class="secondary-btn" onclick="settingsManager.cancelEditRaindropToken()">{{ t('common.actions.cancel') }}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <label for="raindropCollectionId">
+                                            {{ t('settings.raindropSync.collectionLabel') }}
+                                            <i class="fas fa-info-circle info-icon" data-tooltip="{{ t('settings.raindropSync.collectionHelp') }}"></i>
+                                        </label>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div class="text-input-wrapper">
+                                            <input type="text" id="raindropCollectionId"
+                                                   placeholder="{{ t('settings.raindropSync.collectionPlaceholder') }}"
+                                                   onblur="settingsManager.saveInputSetting('raindropCollectionId', 'raindrop_collection_id')"
+                                                   onkeydown="if(event.key === 'Enter') { this.blur(); }" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <label for="raindropSyncScriptPath">
+                                            {{ t('settings.raindropSync.scriptPathLabel') }}
+                                            <i class="fas fa-info-circle info-icon" data-tooltip="{{ t('settings.raindropSync.scriptPathHelp') }}"></i>
+                                        </label>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div class="text-input-wrapper">
+                                            <input type="text" id="raindropSyncScriptPath"
+                                                   placeholder="{{ t('settings.raindropSync.scriptPathPlaceholder') }}"
+                                                   onblur="settingsManager.saveInputSetting('raindropSyncScriptPath', 'raindrop_sync_script_path')"
+                                                   onkeydown="if(event.key === 'Enter') { this.blur(); }" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Extra Folder Paths -->
                         <div class="settings-subsection">
                             <div class="settings-subsection-header">

@@ -159,6 +159,19 @@ export class ModalManager {
             });
         }
 
+        // Add raindropSyncModal registration
+        const raindropSyncModal = document.getElementById('raindropSyncModal');
+        if (raindropSyncModal) {
+            this.registerModal('raindropSyncModal', {
+                element: raindropSyncModal,
+                onClose: () => {
+                    this.getModal('raindropSyncModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
         // Add recipeModal registration
         const recipeModal = document.getElementById('recipeModal');
         if (recipeModal) {

@@ -130,6 +130,54 @@ def validate_config():
     return True
 
 # =====================================================================
+# --------------- 進捗イベント／非対話モード（任意・既定OFF） ---------------
+# =====================================================================
+# 呼び出し元（GUI等）から起動されたときだけ、標準出力へ1行1件のJSONを混ぜる。
+# 人間向けの print はそのまま残るので、CLIとしての見え方は既定では変わらない。
+#
+#   有効化       環境変数                          引数
+#   ----------- -------------------------------- --------------------
+#   イベント出力 CIVITAI_SYNC_EVENT_STREAM=1       --events
+#   対話待ち省略 CIVITAI_SYNC_NON_INTERACTIVE=1    --non-interactive
+#
+# イベント行の形式: "@@RDSYNC@@ {\"event\": ..., ...}"
+# 接頭辞を付けるのは、通常のログ行と機械的に区別できるようにするため。
+EVENT_PREFIX = "@@RDSYNC@@"
+EVENTS_ENABLED = os.environ.get("CIVITAI_SYNC_EVENT_STREAM", "") == "1"
+NON_INTERACTIVE = os.environ.get("CIVITAI_SYNC_NON_INTERACTIVE", "") == "1"
+
+
+def emit_event(event, **fields):
+    """進捗イベントを1行のJSONとして出す。無効時は何もしない。
+
+    秘匿値（トークン・APIキー）は渡さないこと。呼び出し元はこの標準出力を
+    そのまま画面へ出すことがある。
+    """
+    if not EVENTS_ENABLED:
+        return
+    payload = {"event": event}
+    payload.update(fields)
+    try:
+        sys.stdout.write(f"{EVENT_PREFIX} {json.dumps(payload, ensure_ascii=False)}\n")
+        sys.stdout.flush()
+    except Exception:
+        # 進捗の出力失敗で同期本体を止めない。
+        pass
+
+
+def apply_cli_flags(argv):
+    """コマンドライン引数でイベント出力・非対話モードを有効化する。
+
+    引数が無ければ何も変えない（従来のダブルクリック起動と同じ挙動）。
+    """
+    global EVENTS_ENABLED, NON_INTERACTIVE
+    if "--events" in argv:
+        EVENTS_ENABLED = True
+    if "--non-interactive" in argv:
+        NON_INTERACTIVE = True
+    return EVENTS_ENABLED, NON_INTERACTIVE
+
+# =====================================================================
 
 
 ANALYZE_ENDPOINT = f"{COMFY_BASE_URL}/api/lm/recipes/analyze-image"
@@ -2079,8 +2127,19 @@ def sync_image_hybrid(domain, image_id, recipe_dir, failed_ids, synced_ids):
 # =====================================================================
 def main():
     print("=== Raindrop から Civitai 画像のハイブリッド同期を開始 ===")
-    
+    emit_event("started")
+
     if not validate_config():
+        emit_event(
+            "finished",
+            status="error",
+            stage="config",
+            message="設定が足りません（raindrop_token / collection_id / recipe_dir）",
+            total=0,
+            success=0,
+            failed=0,
+            failed_ids=[],
+        )
         return
 
 
@@ -2122,22 +2181,30 @@ def main():
     perpage = 50
     all_items = []
     failed_ids = []
-    
+    # 例外が取得段階で起きても集計を出せるよう、先に初期化しておく。
+    pending = []
+    succeeded = 0
+
     headers = {
         "Authorization": f"Bearer {RAINDROP_TOKEN}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
     
+    raindrop_error = ""
     try:
         print("[+] Raindropからブックマーク一覧を取得中...")
         while True:
             raindrop_url = f"https://api.raindrop.io/rest/v1/raindrops/{COLLECTION_ID}?perpage={perpage}&page={page}"
             response = requests.get(raindrop_url, headers=headers)
-            
+
             if response.status_code != 200:
                 print(f"[-] Raindrop APIエラー: {response.status_code}")
+                # 401/403 は「ブックマーク0件」と区別が付かなくなるため、
+                # 呼び出し元へは異常として伝える。ステータスコードだけを載せる
+                # （応答本文にはトークンが混ざりうるので出さない）。
+                raindrop_error = f"Raindrop APIエラー: HTTP {response.status_code}"
                 break
-                
+
             page_items = response.json().get("items", [])
             if not page_items:
                 break
@@ -2150,22 +2217,97 @@ def main():
             
         if not all_items:
             print("[!] ブックマークが見つかりませんでした。")
+            emit_event(
+                "finished",
+                status="error" if raindrop_error else "ok",
+                stage="raindrop" if raindrop_error else "empty",
+                message=raindrop_error or "ブックマークが見つかりませんでした",
+                total=0,
+                success=0,
+                failed=0,
+                failed_ids=[],
+            )
             return
-            
+
         print(f"[+] 合計 {len(all_items)} 個のブックマークをスキャンします（取得済みのものはサイレントスキップ）\n")
-        
+
+        # 処理対象を先に確定させる。ループ内で判定していた頃と同じ結果になるよう、
+        # 同期済みIDの除外と重複リンクの除去をここで済ませる。
+        # ブックマーク数と対象数がずれる理由を後から説明できるよう、除外の内訳を数える。
+        queued_ids = set()
+        skipped_no_link = 0
+        skipped_not_civitai_image = []
+        skipped_duplicate = []
+        skipped_already_synced = []
         for item in all_items:
             link = item.get("link", "")
             if not link:
+                skipped_no_link += 1
                 continue
-                
+
             domain, image_id = get_civitai_image_info(link)
-            if image_id and domain:
-                if image_id in synced_ids:
-                    continue
-                
-                sync_image_hybrid(domain, image_id, RECIPE_DIR, failed_ids, synced_ids)
-                time.sleep(2.0)
+            if not (image_id and domain):
+                skipped_not_civitai_image.append(link)
+                continue
+            if image_id in synced_ids:
+                skipped_already_synced.append(image_id)
+                continue
+            if image_id in queued_ids:
+                skipped_duplicate.append(image_id)
+                continue
+            queued_ids.add(image_id)
+            pending.append((domain, image_id))
+
+        total_pending = len(pending)
+
+        excluded = (
+            skipped_no_link
+            + len(skipped_not_civitai_image)
+            + len(skipped_duplicate)
+            + len(skipped_already_synced)
+        )
+        if excluded:
+            print(
+                f"[+] 対象外 {excluded} 件の内訳: "
+                f"Civitai画像URLでない {len(skipped_not_civitai_image)} / "
+                f"重複 {len(skipped_duplicate)} / "
+                f"同期済み {len(skipped_already_synced)} / "
+                f"リンク無し {skipped_no_link}"
+            )
+            for link in skipped_not_civitai_image[:20]:
+                print(f"    -> 対象外URL: {link}")
+            if len(skipped_not_civitai_image) > 20:
+                print(f"    -> ほか {len(skipped_not_civitai_image) - 20} 件")
+
+        emit_event(
+            "planned",
+            bookmarks=len(all_items),
+            total=total_pending,
+            already_synced=len(skipped_already_synced),
+            excluded=excluded,
+            excluded_not_civitai_image=len(skipped_not_civitai_image),
+            excluded_duplicate=len(skipped_duplicate),
+            excluded_no_link=skipped_no_link,
+            # 調べ直せるように、対象外URLは先頭20件だけ載せる（秘匿値は含まない公開URL）
+            excluded_not_civitai_image_samples=skipped_not_civitai_image[:20],
+            duplicate_image_ids=skipped_duplicate[:20],
+        )
+
+        for index, (domain, image_id) in enumerate(pending, start=1):
+            emit_event("item_started", image_id=image_id, index=index, total=total_pending)
+            ok = bool(sync_image_hybrid(domain, image_id, RECIPE_DIR, failed_ids, synced_ids))
+            if ok:
+                succeeded += 1
+            emit_event(
+                "item_finished",
+                image_id=image_id,
+                index=index,
+                total=total_pending,
+                ok=ok,
+                success=succeeded,
+                failed=index - succeeded,
+            )
+            time.sleep(2.0)
 
         # 修正前に起動したLora-Managerは親モデルIDを保存時に落とすため、
         # 今回新規保存されたレシピも最後に直接補完して即時反映する。
@@ -2189,15 +2331,41 @@ def main():
             print("======================================")
         else:
             print("\n[+] すべての画像が正常に処理されました（失敗なし）")
-        
+
+        emit_event(
+            "finished",
+            status="ok",
+            total=total_pending,
+            success=succeeded,
+            failed=total_pending - succeeded,
+            failed_ids=list(failed_ids),
+        )
+
     except Exception as e:
         print(f"[-] 実行中にエラーが発生しました: {e}")
+        emit_event(
+            "finished",
+            status="error",
+            stage="run",
+            message=str(e),
+            total=len(pending),
+            success=succeeded,
+            failed=len(pending) - succeeded,
+            failed_ids=list(failed_ids),
+        )
 
 if __name__ == "__main__":
+    apply_cli_flags(sys.argv[1:])
     try:
         main()
     except Exception as e:
         print(f"[-] 致命的なエラー: {e}")
+        emit_event("finished", status="error", stage="fatal", message=str(e),
+                   total=0, success=0, failed=0, failed_ids=[])
     finally:
         print("\n--------------------------------------")
-        input("エンターキーを押すとウインドウを閉じます...")
+        if NON_INTERACTIVE:
+            # 呼び出し元がGUI等の場合、ここで待つとプロセスが終わらない。
+            print("（非対話モードのため終了します）")
+        else:
+            input("エンターキーを押すとウインドウを閉じます...")

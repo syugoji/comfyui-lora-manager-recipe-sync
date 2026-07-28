@@ -29,6 +29,7 @@ from ..utils.cache_paths import get_cache_base_dir
 from ..utils.exif_utils import ExifUtils
 from .handlers.recipe_handlers import (
     BatchImportHandler,
+    RaindropSyncHandler,
     RecipeAnalysisHandler,
     RecipeHandlerSet,
     RecipeListingHandler,
@@ -231,6 +232,12 @@ class BaseRecipeRoutes:
             batch_import_service=batch_import_service,
         )
 
+        raindrop_sync = RaindropSyncHandler(
+            recipe_scanner_getter=recipe_scanner_getter,
+            ensure_dependencies_ready=self.ensure_dependencies_ready,
+            logger=logger,
+        )
+
         return RecipeHandlerSet(
             page_view=page_view,
             listing=listing,
@@ -239,4 +246,5 @@ class BaseRecipeRoutes:
             analysis=analysis,
             sharing=sharing,
             batch_import=batch_import,
+            raindrop_sync=raindrop_sync,
         )

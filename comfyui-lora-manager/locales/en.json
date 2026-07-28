@@ -656,6 +656,21 @@
             "proxyPassword": "Password (Optional)",
             "proxyPasswordPlaceholder": "password",
             "proxyPasswordHelp": "Password for proxy authentication (if required)"
+        },
+        "raindropSync": {
+            "title": "Raindrop Sync",
+            "tokenLabel": "Raindrop Token",
+            "tokenHelp": "Test token issued in your Raindrop.io settings. Kept on the server and never sent back to the browser.",
+            "tokenPlaceholder": "Enter your Raindrop test token",
+            "tokenConfigured": "Configured",
+            "tokenNotConfigured": "Not configured",
+            "tokenSet": "Set up",
+            "collectionLabel": "Collection ID",
+            "collectionHelp": "Numeric ID of the Raindrop collection that holds the CivitAI image bookmarks.",
+            "collectionPlaceholder": "e.g. 12345678",
+            "scriptPathLabel": "Sync script path",
+            "scriptPathHelp": "Path to civitai_image_download.py. Leave empty to use the civitai-recipe-sync folder shipped next to this one.",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -843,7 +858,8 @@
                     "selectImageFile": "Please select an image file",
                     "enterUrlOrPath": "Please enter a URL or file path",
                     "selectLoraRoot": "Please select a LoRA root directory"
-                }
+                },
+                "downloadingResources": "Downloading recipe resources..."
             },
             "sort": {
                 "title": "Sort recipes by...",
@@ -977,6 +993,34 @@
                 "enterDirectory": "Please enter a directory path",
                 "startFailed": "Failed to start import: {message}"
             }
+        },
+        "raindropSync": {
+            "title": "Sync recipes from Raindrop",
+            "action": "Raindrop Sync",
+            "description": "Reads CivitAI image bookmarks from Raindrop and saves them as recipes. The sync itself runs as a separate process.",
+            "tokenLabel": "Token",
+            "collectionLabel": "Collection",
+            "configured": "Configured",
+            "notConfigured": "Not configured",
+            "needsSettings": "Set the Raindrop token and collection ID in Settings first.",
+            "start": "Start sync",
+            "running": "Syncing...",
+            "completed": "Sync finished",
+            "cancelled": "Sync cancelled",
+            "failedTitle": "Sync failed",
+            "total": "Target",
+            "success": "Saved",
+            "failed": "Failed",
+            "alreadySynced": "Already synced",
+            "current": "Current",
+            "viewLog": "View log",
+            "cancel": "Stop",
+            "failedIds": "Failed image IDs",
+            "excludedSummary": "{gap} of {bookmarks} bookmarks are out of scope",
+            "excludedNotCivitaiImage": "Not a CivitAI image URL",
+            "excludedDuplicate": "Duplicate image ID",
+            "excludedAlreadySynced": "Already synced",
+            "excludedNoLink": "Empty link"
         }
     },
     "checkpoints": {
@@ -1875,7 +1919,16 @@
             "reimportBulkFailed": "Failed to re-import some recipes",
             "noMissingLorasInSelection": "No missing LoRAs found in selected recipes",
             "noMissingResourcesInSelection": "No missing checkpoints, LoRAs, or embeddings found in selected recipes",
-            "noLoraRootConfigured": "No LoRA root directory configured. Please set a default LoRA root in settings."
+            "noLoraRootConfigured": "No LoRA root directory configured. Please set a default LoRA root in settings.",
+            "raindropSyncStartFailed": "Failed to start Raindrop sync: {message}",
+            "raindropSyncCancelFailed": "Failed to stop Raindrop sync: {message}",
+            "allResourcesDownloadSuccessful": "Downloaded {count} recipe resource(s).",
+            "noModelRootConfigured": "No {type} root directory is configured.",
+            "notesUpdated": "Notes saved",
+            "referenceUnavailable": "Could not build the reference text",
+            "resourcesDownloadFailed": "Recipe resource download failed: {message}",
+            "resourcesDownloadPartialSuccess": "Downloaded {completed} of {total} recipe resource(s).",
+            "revisionAdopted": "Adopted the AI-revised version. The original recipe is unchanged."
         },
         "models": {
             "noModelsSelected": "No models selected",

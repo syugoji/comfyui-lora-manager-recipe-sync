@@ -13,6 +13,7 @@ import { sidebarManager } from './components/SidebarManager.js';
 import { initSortDropdown } from './components/controls/SortDropdown.js';
 import { bulkMissingLoraDownloadManager } from './managers/BulkMissingLoraDownloadManager.js';
 import { recipePlaylistManager } from './managers/RecipePlaylistManager.js';
+import { raindropSyncManager } from './managers/RaindropSyncManager.js';
 
 class RecipePageControls {
     constructor() {
@@ -122,6 +123,7 @@ class RecipeManager {
         // Only expose what's needed for the page
         window.recipeManager = this;
         window.importManager = this.importManager;
+        window.raindropSyncManager = raindropSyncManager;
     }
 
     _checkCustomFilter() {

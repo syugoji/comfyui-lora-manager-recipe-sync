@@ -848,6 +848,19 @@ export class SettingsManager {
             recipesPathInput.value = state.global.settings.recipes_path || '';
         }
 
+        // Raindrop sync: token status only (never pre-fill the secret)
+        this.updateRaindropTokenStatus();
+
+        const raindropCollectionInput = document.getElementById('raindropCollectionId');
+        if (raindropCollectionInput) {
+            raindropCollectionInput.value = state.global.settings.raindrop_collection_id || '';
+        }
+
+        const raindropScriptPathInput = document.getElementById('raindropSyncScriptPath');
+        if (raindropScriptPathInput) {
+            raindropScriptPathInput.value = state.global.settings.raindrop_sync_script_path || '';
+        }
+
         const autoOrganizeExclusionsInput = document.getElementById('autoOrganizeExclusions');
         if (autoOrganizeExclusionsInput) {
             const patterns = this.normalizePatternList(state.global.settings.auto_organize_exclusions);
@@ -2977,6 +2990,78 @@ export class SettingsManager {
         state.global.settings.civitai_api_key_set = !!value;
         this.cancelEditApiKey(true);
         this.updateApiKeyStatus();
+    }
+
+    // ── Raindrop sync credentials ───────────────────────────────
+    // CivitAI API キーと同じ扱い。値はフロントへ返さず、設定済みかどうかの
+    // 真偽値（raindrop_token_set）だけを受け取る。
+
+    updateRaindropTokenStatus() {
+        const hasToken = !!state.global.settings.raindrop_token_set;
+        const statusText = document.getElementById('raindropTokenStatusText');
+        const actionBtn = document.getElementById('raindropTokenActionBtn');
+        if (!statusText || !actionBtn) return;
+
+        if (hasToken) {
+            statusText.classList.remove('api-key-status--unconfigured');
+            statusText.classList.add('api-key-status--configured');
+            statusText.innerHTML = '<i class="fas fa-check-circle text-success"></i> '
+                + translate('settings.raindropSync.tokenConfigured', {}, 'Configured');
+            actionBtn.textContent = translate('common.actions.change', {}, 'Change');
+        } else {
+            statusText.classList.remove('api-key-status--configured');
+            statusText.classList.add('api-key-status--unconfigured');
+            statusText.innerHTML = '<i class="fas fa-times-circle text-error"></i> '
+                + translate('settings.raindropSync.tokenNotConfigured', {}, 'Not configured');
+            actionBtn.textContent = translate('settings.raindropSync.tokenSet', {}, 'Set up');
+        }
+    }
+
+    editRaindropToken() {
+        const statusEl = document.getElementById('raindropTokenStatus');
+        if (statusEl) statusEl.classList.add('is-hidden');
+        const editContainer = document.getElementById('raindropTokenEdit');
+        if (editContainer) editContainer.classList.remove('is-hidden');
+        const input = document.getElementById('raindropToken');
+        if (input) {
+            input.value = '';  // Never pre-fill the secret
+            setTimeout(() => input.focus(), 50);
+        }
+    }
+
+    cancelEditRaindropToken(silent) {
+        const editContainer = document.getElementById('raindropTokenEdit');
+        if (editContainer) editContainer.classList.add('is-hidden');
+        const statusContainer = document.getElementById('raindropTokenStatus');
+        if (statusContainer) statusContainer.classList.remove('is-hidden');
+        const input = document.getElementById('raindropToken');
+        if (input) input.value = '';
+        if (!silent) {
+            this.updateRaindropTokenStatus();
+        }
+    }
+
+    async saveRaindropToken() {
+        const input = document.getElementById('raindropToken');
+        if (!input) return;
+
+        const value = input.value.trim();
+
+        try {
+            await this.saveSetting('raindrop_token', value);
+            showToast('toast.settings.settingsUpdated',
+                { setting: 'Raindrop Token' }, 'success');
+        } catch (error) {
+            showToast('toast.settings.settingSaveFailed',
+                { message: error.message }, 'error');
+            return;
+        }
+
+        // 値そのものは state に残さない。設定済みフラグだけ更新する。
+        delete state.global.settings.raindrop_token;
+        state.global.settings.raindrop_token_set = !!value;
+        this.cancelEditRaindropToken(true);
+        this.updateRaindropTokenStatus();
     }
 
     toggleInputVisibility(button) {

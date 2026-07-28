@@ -656,6 +656,21 @@
             "proxyPassword": "Пароль (необязательно)",
             "proxyPasswordPlaceholder": "пароль",
             "proxyPasswordHelp": "Пароль для аутентификации на прокси (если требуется)"
+        },
+        "raindropSync": {
+            "title": "Синхронизация Raindrop",
+            "tokenLabel": "Токен Raindrop",
+            "tokenHelp": "Тестовый токен, выданный в настройках Raindrop.io. Хранится на сервере и не возвращается в браузер.",
+            "tokenPlaceholder": "Введите тестовый токен Raindrop",
+            "tokenConfigured": "Настроено",
+            "tokenNotConfigured": "Не настроено",
+            "tokenSet": "Настроить",
+            "collectionLabel": "ID коллекции",
+            "collectionHelp": "Числовой ID коллекции Raindrop с закладками изображений CivitAI.",
+            "collectionPlaceholder": "например, 12345678",
+            "scriptPathLabel": "Путь к скрипту синхронизации",
+            "scriptPathHelp": "Путь к civitai_image_download.py. Оставьте пустым, чтобы использовать соседнюю папку civitai-recipe-sync.",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -753,7 +768,8 @@
                 "completed": "Завершено: {success} перемещено, {skipped} пропущено, {failures} не удалось",
                 "complete": "Автоматическая организация завершена",
                 "error": "Ошибка: {error}"
-            }
+            },
+            "downloadMissingResources": "Скачать недостающие чекпоинты, LoRA и эмбеддинги"
         },
         "contextMenu": {
             "refreshMetadata": "Обновить данные Civitai",
@@ -842,7 +858,8 @@
                     "selectImageFile": "Пожалуйста, выберите файл изображения",
                     "enterUrlOrPath": "Пожалуйста, введите URL или путь к файлу",
                     "selectLoraRoot": "Пожалуйста, выберите корневую папку LoRA"
-                }
+                },
+                "downloadingResources": "Загрузка ресурсов рецепта..."
             },
             "sort": {
                 "title": "Сортировка рецептов...",
@@ -854,7 +871,10 @@
                 "dateAsc": "Сначала старые",
                 "lorasCount": "Кол-во LoRA",
                 "lorasCountDesc": "Больше всего",
-                "lorasCountAsc": "Меньше всего"
+                "lorasCountAsc": "Меньше всего",
+                "checkpoint": "Чекпоинт",
+                "checkpointAsc": "Название модели (А-Я)",
+                "checkpointDesc": "Название модели (Я-А)"
             },
             "refresh": {
                 "title": "Обновить список рецептов",
@@ -865,6 +885,10 @@
             "favorites": {
                 "title": "Только избранные",
                 "action": "Избранное"
+            },
+            "playlist": {
+                "action": "Список запуска",
+                "title": "Список запуска (ставит рецепты в очередь ComfyUI по порядку)"
             }
         },
         "duplicates": {
@@ -905,6 +929,11 @@
                 "noSourceUrl": "У рецепта нет URL источника, переимпорт невозможен",
                 "failed": "Не удалось переимпортировать рецепт: {message}",
                 "missingId": "Невозможно переимпортировать рецепт: отсутствует ID"
+            },
+            "addToPlaylist": "Добавить в список запуска",
+            "playlist": {
+                "addFailed": "Не удалось добавить рецепт в список запуска",
+                "missingId": "Нельзя добавить в список запуска: отсутствует ID рецепта"
             }
         },
         "batchImport": {
@@ -964,6 +993,34 @@
                 "enterDirectory": "Please enter a directory path",
                 "startFailed": "Failed to start import: {message}"
             }
+        },
+        "raindropSync": {
+            "title": "Синхронизация рецептов из Raindrop",
+            "action": "Синхронизация Raindrop",
+            "description": "Читает закладки изображений CivitAI из Raindrop и сохраняет их как рецепты. Сама синхронизация выполняется в отдельном процессе.",
+            "tokenLabel": "Токен",
+            "collectionLabel": "Коллекция",
+            "configured": "Настроено",
+            "notConfigured": "Не настроено",
+            "needsSettings": "Сначала укажите токен Raindrop и ID коллекции в настройках.",
+            "start": "Начать синхронизацию",
+            "running": "Синхронизация...",
+            "completed": "Синхронизация завершена",
+            "cancelled": "Синхронизация отменена",
+            "failedTitle": "Синхронизация не удалась",
+            "total": "К обработке",
+            "success": "Сохранено",
+            "failed": "Ошибок",
+            "alreadySynced": "Уже синхронизировано",
+            "current": "Текущее",
+            "viewLog": "Показать журнал",
+            "cancel": "Остановить",
+            "failedIds": "ID изображений с ошибкой",
+            "excludedSummary": "{gap} из {bookmarks} закладок вне области обработки",
+            "excludedNotCivitaiImage": "Не ссылка на изображение CivitAI",
+            "excludedDuplicate": "Повторяющийся ID изображения",
+            "excludedAlreadySynced": "Уже синхронизировано",
+            "excludedNoLink": "Пустая ссылка"
         }
     },
     "checkpoints": {
@@ -1513,6 +1570,12 @@
             "downloadCsv": "Скачать CSV",
             "columnModelName": "Имя модели",
             "columnError": "Ошибка"
+        },
+        "bulkDownloadMissingResources": {
+            "downloadButton": "Скачать ресурсов: {count}",
+            "message": "Найдено уникальных недостающих ресурсов: {uniqueCount} (всего {totalCount} в выбранных рецептах).",
+            "previewTitle": "Ресурсы к загрузке:",
+            "title": "Скачать недостающие ресурсы рецептов"
         }
     },
     "modelTags": {
@@ -1851,7 +1914,21 @@
             "reimportBulkComplete": "Переимпорт завершён: {completed} переимпортировано, {failed} ошибок (из {total})",
             "reimportBulkFailed": "Не удалось переимпортировать некоторые рецепты",
             "noMissingLorasInSelection": "В выбранных рецептах не найдены отсутствующие LoRAs",
-            "noLoraRootConfigured": "Корневой каталог LoRA не настроен. Пожалуйста, установите корневой каталог LoRA по умолчанию в настройках."
+            "noLoraRootConfigured": "Корневой каталог LoRA не настроен. Пожалуйста, установите корневой каталог LoRA по умолчанию в настройках.",
+            "raindropSyncStartFailed": "Не удалось запустить синхронизацию Raindrop: {message}",
+            "raindropSyncCancelFailed": "Не удалось остановить синхронизацию Raindrop: {message}",
+            "noMissingResourcesInSelection": "В выбранных рецептах нет недостающих чекпоинтов, LoRA или эмбеддингов",
+            "playlistAdded": "В список запуска добавлено рецептов: {added} (пропущено {skipped})",
+            "playlistQueued": "Список запуска: поставлено в очередь {queued} рецепт(ов) (пропущено {skipped})",
+            "workflowReplayFailed": "Не удалось воссоздать рабочий процесс ComfyUI: {message}",
+            "workflowReplayed": "{source} загружен в ComfyUI. {warning}",
+            "allResourcesDownloadSuccessful": "Загружено ресурсов рецепта: {count}.",
+            "noModelRootConfigured": "Корневой каталог для «{type}» не настроен.",
+            "notesUpdated": "Заметки сохранены",
+            "referenceUnavailable": "Не удалось собрать справочный текст",
+            "resourcesDownloadFailed": "Не удалось загрузить ресурсы рецепта: {message}",
+            "resourcesDownloadPartialSuccess": "Загружено {completed} из {total} ресурсов рецепта.",
+            "revisionAdopted": "Версия, доработанная ИИ, принята. Исходный рецепт не изменён."
         },
         "models": {
             "noModelsSelected": "Модели не выбраны",

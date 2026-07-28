@@ -89,6 +89,9 @@
             <div title="{{ t('recipes.batchImport.title') }}" class="control-group">
                 <button onclick="batchImportManager.showModal()"><i class="fas fa-layer-group"></i> {{ t('recipes.batchImport.action') }}</button>
             </div>
+            <div title="{{ t('recipes.raindropSync.title') }}" class="control-group">
+                <button id="raindropSyncBtn" onclick="raindropSyncManager.showModal()"><i class="fas fa-sync"></i> {{ t('recipes.raindropSync.action') }}</button>
+            </div>
             <div class="control-group">
                 <button id="downloadMissingRecipeResourcesBtn" disabled title="{{ t('loras.bulkOperations.downloadMissingResources', default='Download missing checkpoints, LoRAs, and embeddings') }}">
                     <i class="fas fa-cloud-download-alt"></i> <span>{{ t('loras.bulkOperations.downloadMissingResources', default='Download missing checkpoints, LoRAs, and embeddings') }}</span>

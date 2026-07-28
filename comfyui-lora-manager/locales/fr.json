@@ -656,6 +656,21 @@
             "proxyPassword": "Mot de passe (optionnel)",
             "proxyPasswordPlaceholder": "mot_de_passe",
             "proxyPasswordHelp": "Mot de passe pour l'authentification proxy (si nécessaire)"
+        },
+        "raindropSync": {
+            "title": "Synchro Raindrop",
+            "tokenLabel": "Jeton Raindrop",
+            "tokenHelp": "Jeton de test généré dans les paramètres de Raindrop.io. Conservé sur le serveur et jamais renvoyé au navigateur.",
+            "tokenPlaceholder": "Saisissez votre jeton de test Raindrop",
+            "tokenConfigured": "Configuré",
+            "tokenNotConfigured": "Non configuré",
+            "tokenSet": "Configurer",
+            "collectionLabel": "ID de collection",
+            "collectionHelp": "ID numérique de la collection Raindrop contenant les favoris d'images CivitAI.",
+            "collectionPlaceholder": "ex. 12345678",
+            "scriptPathLabel": "Chemin du script de synchronisation",
+            "scriptPathHelp": "Chemin vers civitai_image_download.py. Laissez vide pour utiliser le dossier civitai-recipe-sync livré à côté.",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -753,7 +768,8 @@
                 "completed": "Terminé : {success} déplacés, {skipped} ignorés, {failures} échecs",
                 "complete": "Auto-organisation terminée",
                 "error": "Erreur : {error}"
-            }
+            },
+            "downloadMissingResources": "Télécharger les checkpoints, LoRA et embeddings manquants"
         },
         "contextMenu": {
             "refreshMetadata": "Actualiser les données Civitai",
@@ -842,7 +858,8 @@
                     "selectImageFile": "Veuillez sélectionner un fichier image",
                     "enterUrlOrPath": "Veuillez entrer une URL ou un chemin de fichier",
                     "selectLoraRoot": "Veuillez sélectionner un répertoire racine LoRA"
-                }
+                },
+                "downloadingResources": "Téléchargement des ressources de la recette..."
             },
             "sort": {
                 "title": "Trier les recettes par...",
@@ -854,7 +871,10 @@
                 "dateAsc": "Plus ancien",
                 "lorasCount": "Nombre de LoRAs",
                 "lorasCountDesc": "Plus",
-                "lorasCountAsc": "Moins"
+                "lorasCountAsc": "Moins",
+                "checkpoint": "Checkpoint",
+                "checkpointAsc": "Nom du modèle (A à Z)",
+                "checkpointDesc": "Nom du modèle (Z à A)"
             },
             "refresh": {
                 "title": "Actualiser la liste des recipes",
@@ -865,6 +885,10 @@
             "favorites": {
                 "title": "Afficher uniquement les favoris",
                 "action": "Favoris"
+            },
+            "playlist": {
+                "action": "Liste d'exécution",
+                "title": "Liste d'exécution (met les recettes en file dans ComfyUI, dans l'ordre)"
             }
         },
         "duplicates": {
@@ -905,6 +929,11 @@
                 "noSourceUrl": "La recette n'a pas d'URL source, ré-import impossible",
                 "failed": "Échec du ré-import de la recette : {message}",
                 "missingId": "Impossible de ré-importer la recette : ID de recette manquant"
+            },
+            "addToPlaylist": "Ajouter à la liste d'exécution",
+            "playlist": {
+                "addFailed": "Impossible d'ajouter la recette à la liste d'exécution",
+                "missingId": "Ajout impossible : ID de recette manquant"
             }
         },
         "batchImport": {
@@ -964,6 +993,34 @@
                 "enterDirectory": "Please enter a directory path",
                 "startFailed": "Failed to start import: {message}"
             }
+        },
+        "raindropSync": {
+            "title": "Synchroniser les recettes depuis Raindrop",
+            "action": "Synchro Raindrop",
+            "description": "Lit les favoris d'images CivitAI depuis Raindrop et les enregistre comme recettes. La synchronisation elle-même s'exécute dans un processus séparé.",
+            "tokenLabel": "Jeton",
+            "collectionLabel": "Collection",
+            "configured": "Configuré",
+            "notConfigured": "Non configuré",
+            "needsSettings": "Renseignez d'abord le jeton Raindrop et l'ID de collection dans les paramètres.",
+            "start": "Lancer la synchronisation",
+            "running": "Synchronisation...",
+            "completed": "Synchronisation terminée",
+            "cancelled": "Synchronisation annulée",
+            "failedTitle": "Échec de la synchronisation",
+            "total": "À traiter",
+            "success": "Enregistrés",
+            "failed": "Échecs",
+            "alreadySynced": "Déjà synchronisé",
+            "current": "En cours",
+            "viewLog": "Voir le journal",
+            "cancel": "Arrêter",
+            "failedIds": "ID d'images en échec",
+            "excludedSummary": "{gap} favoris sur {bookmarks} sont hors périmètre",
+            "excludedNotCivitaiImage": "Pas une URL d'image CivitAI",
+            "excludedDuplicate": "ID d'image en double",
+            "excludedAlreadySynced": "Déjà synchronisé",
+            "excludedNoLink": "Lien vide"
         }
     },
     "checkpoints": {
@@ -1513,6 +1570,12 @@
             "downloadCsv": "Télécharger CSV",
             "columnModelName": "Nom du modèle",
             "columnError": "Erreur"
+        },
+        "bulkDownloadMissingResources": {
+            "downloadButton": "Télécharger {count} ressource(s)",
+            "message": "{uniqueCount} ressources manquantes uniques trouvées (sur {totalCount} au total dans les recettes sélectionnées).",
+            "previewTitle": "Ressources à télécharger :",
+            "title": "Télécharger les ressources de recette manquantes"
         }
     },
     "modelTags": {
@@ -1851,7 +1914,21 @@
             "reimportBulkComplete": "Ré-import terminé : {completed} ré-importé(s), {failed} échec(s) (sur {total})",
             "reimportBulkFailed": "Échec du ré-import de certaines recettes",
             "noMissingLorasInSelection": "Aucun LoRA manquant trouvé dans les recettes sélectionnées",
-            "noLoraRootConfigured": "Aucun répertoire racine LoRA configuré. Veuillez définir un répertoire racine LoRA par défaut dans les paramètres."
+            "noLoraRootConfigured": "Aucun répertoire racine LoRA configuré. Veuillez définir un répertoire racine LoRA par défaut dans les paramètres.",
+            "raindropSyncStartFailed": "Impossible de lancer la synchro Raindrop : {message}",
+            "raindropSyncCancelFailed": "Impossible d'arrêter la synchro Raindrop : {message}",
+            "noMissingResourcesInSelection": "Aucun checkpoint, LoRA ou embedding manquant dans les recettes sélectionnées",
+            "playlistAdded": "{added} recette(s) ajoutée(s) à la liste d'exécution ({skipped} ignorée(s))",
+            "playlistQueued": "Liste d'exécution : {queued} recette(s) en file ({skipped} ignorée(s))",
+            "workflowReplayFailed": "Impossible de recréer le workflow ComfyUI : {message}",
+            "workflowReplayed": "{source} chargé dans ComfyUI. {warning}",
+            "allResourcesDownloadSuccessful": "{count} ressource(s) de recette téléchargée(s).",
+            "noModelRootConfigured": "Aucun répertoire racine configuré pour « {type} ».",
+            "notesUpdated": "Notes enregistrées",
+            "referenceUnavailable": "Impossible de générer le texte de référence",
+            "resourcesDownloadFailed": "Échec du téléchargement des ressources de la recette : {message}",
+            "resourcesDownloadPartialSuccess": "{completed} ressource(s) de recette téléchargée(s) sur {total}.",
+            "revisionAdopted": "Version révisée par l'IA adoptée. La recette d'origine est inchangée."
         },
         "models": {
             "noModelsSelected": "Aucun modèle sélectionné",

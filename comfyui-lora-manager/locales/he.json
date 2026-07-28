@@ -656,6 +656,21 @@
             "proxyPassword": "סיסמה (אופציונלי)",
             "proxyPasswordPlaceholder": "password",
             "proxyPasswordHelp": "סיסמה לאימות מול הפרוקסי (אם נדרש)"
+        },
+        "raindropSync": {
+            "title": "סנכרון Raindrop",
+            "tokenLabel": "טוקן Raindrop",
+            "tokenHelp": "טוקן בדיקה שהונפק בהגדרות Raindrop.io. נשמר בשרת בלבד ואינו מוחזר לדפדפן.",
+            "tokenPlaceholder": "הזן את טוקן הבדיקה של Raindrop",
+            "tokenConfigured": "מוגדר",
+            "tokenNotConfigured": "לא מוגדר",
+            "tokenSet": "הגדר",
+            "collectionLabel": "מזהה אוסף",
+            "collectionHelp": "מזהה מספרי של אוסף Raindrop שמכיל את סימניות תמונות CivitAI.",
+            "collectionPlaceholder": "לדוגמה 12345678",
+            "scriptPathLabel": "נתיב סקריפט הסנכרון",
+            "scriptPathHelp": "הנתיב אל civitai_image_download.py. השאר ריק כדי להשתמש בתיקיית civitai-recipe-sync המצורפת לצדו.",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -753,7 +768,8 @@
                 "completed": "הושלם: {success} הועברו, {skipped} דולגו, {failures} נכשלו",
                 "complete": "ארגון אוטומטי הושלם",
                 "error": "שגיאה: {error}"
-            }
+            },
+            "downloadMissingResources": "הורדת צ'קפוינטים, LoRA והטמעות חסרים"
         },
         "contextMenu": {
             "refreshMetadata": "רענן נתוני Civitai",
@@ -842,7 +858,8 @@
                     "selectImageFile": "אנא בחר קובץ תמונה",
                     "enterUrlOrPath": "אנא הזן URL או נתיב קובץ",
                     "selectLoraRoot": "אנא בחר ספריית שורש של LoRA"
-                }
+                },
+                "downloadingResources": "מוריד משאבי מתכון..."
             },
             "sort": {
                 "title": "מיון מתכונים לפי...",
@@ -854,7 +871,10 @@
                 "dateAsc": "הכי ישן",
                 "lorasCount": "מספר LoRAs",
                 "lorasCountDesc": "הכי הרבה",
-                "lorasCountAsc": "הכי פחות"
+                "lorasCountAsc": "הכי פחות",
+                "checkpoint": "צ'קפוינט",
+                "checkpointAsc": "שם הדגם (א' עד ת')",
+                "checkpointDesc": "שם הדגם (ת' עד א')"
             },
             "refresh": {
                 "title": "רענן רשימת מתכונים",
@@ -865,6 +885,10 @@
             "favorites": {
                 "title": "הצג מועדפים בלבד",
                 "action": "מועדפים"
+            },
+            "playlist": {
+                "action": "רשימת הרצה",
+                "title": "רשימת הרצה (מכניסה מתכונים לתור ComfyUI לפי הסדר)"
             }
         },
         "duplicates": {
@@ -905,6 +929,11 @@
                 "noSourceUrl": "למתכון אין כתובת מקור, לא ניתן לייבא מחדש",
                 "failed": "ייבוא המתכון מחדש נכשל: {message}",
                 "missingId": "לא ניתן לייבא מחדש: חסר מזהה מתכון"
+            },
+            "addToPlaylist": "הוסף לרשימת ההרצה",
+            "playlist": {
+                "addFailed": "לא ניתן היה להוסיף את המתכון לרשימת ההרצה",
+                "missingId": "לא ניתן להוסיף לרשימת ההרצה: חסר מזהה מתכון"
             }
         },
         "batchImport": {
@@ -964,6 +993,34 @@
                 "enterDirectory": "Please enter a directory path",
                 "startFailed": "Failed to start import: {message}"
             }
+        },
+        "raindropSync": {
+            "title": "סנכרון מתכונים מ-Raindrop",
+            "action": "סנכרון Raindrop",
+            "description": "קורא סימניות של תמונות CivitAI מ-Raindrop ושומר אותן כמתכונים. הסנכרון עצמו רץ בתהליך נפרד.",
+            "tokenLabel": "טוקן",
+            "collectionLabel": "אוסף",
+            "configured": "מוגדר",
+            "notConfigured": "לא מוגדר",
+            "needsSettings": "יש להזין תחילה טוקן Raindrop ומזהה אוסף בהגדרות.",
+            "start": "התחל סנכרון",
+            "running": "מסנכרן...",
+            "completed": "הסנכרון הסתיים",
+            "cancelled": "הסנכרון בוטל",
+            "failedTitle": "הסנכרון נכשל",
+            "total": "לעיבוד",
+            "success": "נשמרו",
+            "failed": "נכשלו",
+            "alreadySynced": "כבר מסונכרן",
+            "current": "נוכחי",
+            "viewLog": "הצג יומן",
+            "cancel": "עצור",
+            "failedIds": "מזהי תמונות שנכשלו",
+            "excludedSummary": "{gap} מתוך {bookmarks} סימניות מחוץ לטווח",
+            "excludedNotCivitaiImage": "אינה כתובת תמונה של CivitAI",
+            "excludedDuplicate": "מזהה תמונה כפול",
+            "excludedAlreadySynced": "כבר מסונכרן",
+            "excludedNoLink": "קישור ריק"
         }
     },
     "checkpoints": {
@@ -1513,6 +1570,12 @@
             "downloadCsv": "הורד CSV",
             "columnModelName": "שם המודל",
             "columnError": "שגיאה"
+        },
+        "bulkDownloadMissingResources": {
+            "downloadButton": "הורד {count} משאבים",
+            "message": "נמצאו {uniqueCount} משאבים חסרים ייחודיים (מתוך {totalCount} סך הכול במתכונים שנבחרו).",
+            "previewTitle": "משאבים להורדה:",
+            "title": "הורדת משאבי מתכון חסרים"
         }
     },
     "modelTags": {
@@ -1851,7 +1914,21 @@
             "reimportBulkComplete": "ייבוא מחדש הושלם: {completed} יובאו, {failed} נכשלו (מתוך {total})",
             "reimportBulkFailed": "ייבוא מחדש של חלק מהמתכונים נכשל",
             "noMissingLorasInSelection": "לא נמצאו LoRAs חסרים במתכונים שנבחרו",
-            "noLoraRootConfigured": "תיקיית השורש של LoRA לא מוגדרת. אנא הגדר תיקיית שורש LoRA ברירת מחדל בהגדרות."
+            "noLoraRootConfigured": "תיקיית השורש של LoRA לא מוגדרת. אנא הגדר תיקיית שורש LoRA ברירת מחדל בהגדרות.",
+            "raindropSyncStartFailed": "לא ניתן היה להתחיל סנכרון Raindrop: {message}",
+            "raindropSyncCancelFailed": "לא ניתן היה לעצור סנכרון Raindrop: {message}",
+            "noMissingResourcesInSelection": "לא נמצאו צ'קפוינטים, LoRA או הטמעות חסרים במתכונים שנבחרו",
+            "playlistAdded": "נוספו {added} מתכונים לרשימת ההרצה ({skipped} דולגו)",
+            "playlistQueued": "רשימת הרצה: {queued} מתכונים הוכנסו לתור ({skipped} דולגו)",
+            "workflowReplayFailed": "לא ניתן היה לשחזר את זרימת העבודה של ComfyUI: {message}",
+            "workflowReplayed": "{source} נטען ב-ComfyUI. {warning}",
+            "allResourcesDownloadSuccessful": "הורדו {count} משאבי מתכון.",
+            "noModelRootConfigured": "לא הוגדרה תיקיית שורש עבור {type}.",
+            "notesUpdated": "ההערות נשמרו",
+            "referenceUnavailable": "לא ניתן היה ליצור את טקסט העזר",
+            "resourcesDownloadFailed": "הורדת משאבי המתכון נכשלה: {message}",
+            "resourcesDownloadPartialSuccess": "הורדו {completed} מתוך {total} משאבי מתכון.",
+            "revisionAdopted": "הגרסה שעודכנה על ידי הבינה המלאכותית אומצה. המתכון המקורי לא השתנה."
         },
         "models": {
             "noModelsSelected": "לא נבחרו מודלים",

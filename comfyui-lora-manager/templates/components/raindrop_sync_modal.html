@@ -1,0 +1,136 @@
+<div id="raindropSyncModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button class="close" onclick="modalManager.closeModal('raindropSyncModal')">&times;</button>
+            <h2>{{ t('recipes.raindropSync.title') }}</h2>
+        </div>
+
+        <!-- Step 1: 事前確認 -->
+        <div class="batch-import-step" id="raindropSyncIntroStep">
+            <div class="import-section">
+                <p class="import-help">{{ t('recipes.raindropSync.description') }}</p>
+                <div class="progress-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">{{ t('recipes.raindropSync.tokenLabel') }}</span>
+                        <span class="stat-value" id="raindropSyncTokenState">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">{{ t('recipes.raindropSync.collectionLabel') }}</span>
+                        <span class="stat-value" id="raindropSyncCollectionState">-</span>
+                    </div>
+                </div>
+                <p class="import-help" id="raindropSyncIntroHint"></p>
+            </div>
+
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="modalManager.closeModal('raindropSyncModal')">{{ t('common.actions.close') }}</button>
+                <button class="primary-btn" id="raindropSyncStartBtn" onclick="raindropSyncManager.startSync()">
+                    <i class="fas fa-sync"></i> {{ t('recipes.raindropSync.start') }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: 進捗 -->
+        <div class="batch-import-step" id="raindropSyncProgressStep" style="display: none;">
+            <div class="batch-progress-container">
+                <div class="progress-header">
+                    <div class="progress-status">
+                        <span class="status-icon"><i class="fas fa-spinner fa-spin"></i></span>
+                        <span class="status-text" id="raindropSyncStatusText">{{ t('recipes.raindropSync.running') }}</span>
+                    </div>
+                    <div class="progress-percentage" id="raindropSyncPercent">0%</div>
+                </div>
+
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="raindropSyncProgressBar" style="width: 0%"></div>
+                </div>
+
+                <div class="progress-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">{{ t('recipes.raindropSync.total') }}</span>
+                        <span class="stat-value" id="raindropSyncTotal">0</span>
+                    </div>
+                    <div class="stat-item success">
+                        <span class="stat-label">{{ t('recipes.raindropSync.success') }}</span>
+                        <span class="stat-value" id="raindropSyncSuccess">0</span>
+                    </div>
+                    <div class="stat-item failed">
+                        <span class="stat-label">{{ t('recipes.raindropSync.failed') }}</span>
+                        <span class="stat-value" id="raindropSyncFailed">0</span>
+                    </div>
+                    <div class="stat-item skipped">
+                        <span class="stat-label">{{ t('recipes.raindropSync.alreadySynced') }}</span>
+                        <span class="stat-value" id="raindropSyncSkipped">0</span>
+                    </div>
+                </div>
+
+                <div class="current-item">
+                    <span class="current-item-label">{{ t('recipes.raindropSync.current') }}</span>
+                    <span class="current-item-name" id="raindropSyncCurrent">-</span>
+                </div>
+
+                <!-- ブックマーク数と対象数がずれたときだけ、その理由を出す -->
+                <div class="results-details" id="raindropSyncExcludedBlock" style="display: none;">
+                    <div class="details-toggle" onclick="raindropSyncManager.toggleExcluded()">
+                        <i class="fas fa-chevron-down" id="raindropSyncExcludedToggleIcon"></i>
+                        <span id="raindropSyncExcludedSummary"></span>
+                    </div>
+                    <div class="details-list" id="raindropSyncExcluded" style="display: none;"></div>
+                </div>
+
+                <div class="results-details">
+                    <div class="details-toggle" onclick="raindropSyncManager.toggleLog()">
+                        <i class="fas fa-chevron-down" id="raindropSyncLogToggleIcon"></i>
+                        <span>{{ t('recipes.raindropSync.viewLog') }}</span>
+                    </div>
+                    <div class="details-list" id="raindropSyncLog" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="secondary-btn" id="raindropSyncCancelBtn" onclick="raindropSyncManager.cancelSync()">
+                    <i class="fas fa-stop"></i> {{ t('recipes.raindropSync.cancel') }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: 結果 -->
+        <div class="batch-import-step" id="raindropSyncResultsStep" style="display: none;">
+            <div class="batch-results-container">
+                <div class="results-header" id="raindropSyncResultsHeader">
+                    <div class="results-icon"><i class="fas fa-check-circle"></i></div>
+                    <div class="results-title" id="raindropSyncResultsTitle">{{ t('recipes.raindropSync.completed') }}</div>
+                </div>
+
+                <div class="results-summary">
+                    <div class="result-card total">
+                        <span class="result-label">{{ t('recipes.raindropSync.total') }}</span>
+                        <span class="result-value" id="raindropSyncResultTotal">0</span>
+                    </div>
+                    <div class="result-card success">
+                        <span class="result-label">{{ t('recipes.raindropSync.success') }}</span>
+                        <span class="result-value" id="raindropSyncResultSuccess">0</span>
+                    </div>
+                    <div class="result-card failed">
+                        <span class="result-label">{{ t('recipes.raindropSync.failed') }}</span>
+                        <span class="result-value" id="raindropSyncResultFailed">0</span>
+                    </div>
+                </div>
+
+                <p class="import-help" id="raindropSyncResultMessage"></p>
+
+                <div class="results-details" id="raindropSyncFailedIdsBlock" style="display: none;">
+                    <div class="details-toggle" onclick="raindropSyncManager.toggleFailedIds()">
+                        <i class="fas fa-chevron-down" id="raindropSyncFailedToggleIcon"></i>
+                        <span>{{ t('recipes.raindropSync.failedIds') }}</span>
+                    </div>
+                    <div class="details-list" id="raindropSyncFailedIds" style="display: none;"></div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="secondary-btn" onclick="raindropSyncManager.closeAndReset()">{{ t('common.actions.close') }}</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -89,6 +89,16 @@ ROUTE_DEFINITIONS: tuple[RouteDefinition, ...] = (
     RouteDefinition(
         "POST", "/api/lm/recipe/{recipe_id}/reimport", "reimport_recipe"
     ),
+    # Raindrop → レシピ同期。同期の実体は別プロセス（civitai-recipe-sync）。
+    RouteDefinition(
+        "POST", "/api/lm/recipes/raindrop-sync/start", "start_raindrop_sync"
+    ),
+    RouteDefinition(
+        "GET", "/api/lm/recipes/raindrop-sync/progress", "get_raindrop_sync_progress"
+    ),
+    RouteDefinition(
+        "POST", "/api/lm/recipes/raindrop-sync/cancel", "cancel_raindrop_sync"
+    ),
 )
 
 

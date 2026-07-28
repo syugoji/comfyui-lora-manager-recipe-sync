@@ -1726,6 +1726,8 @@ class SettingsHandler:
             # Sensitive — never expose the actual value to the frontend;
             # frontend receives a boolean instead (civitai_api_key_set).
             "civitai_api_key",
+            # Same treatment for the Raindrop token (raindrop_token_set).
+            "raindrop_token",
         }
     )
 
@@ -1783,6 +1785,8 @@ class SettingsHandler:
             # Sensitive fields: only expose a boolean indicating whether set
             raw_key = self._settings.get("civitai_api_key")
             response_data["civitai_api_key_set"] = bool(raw_key)
+            raw_raindrop_token = self._settings.get("raindrop_token")
+            response_data["raindrop_token_set"] = bool(raw_raindrop_token)
             settings_file = getattr(self._settings, "settings_file", None)
             if settings_file:
                 response_data["settings_file"] = settings_file

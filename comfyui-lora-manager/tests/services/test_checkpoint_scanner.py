@@ -1,4 +1,6 @@
+import json
 import os
+import struct
 from pathlib import Path
 from typing import List
 
@@ -22,6 +24,21 @@ def _normalize(path: Path) -> str:
     return str(path).replace(os.sep, "/")
 
 
+def _write_minimal_safetensors(path: Path, tensor_name: str = "weight") -> None:
+    """テンソル1本ぶんの最小構成な safetensors を書く。
+
+    このフォークは永続キャッシュを読み戻すとき ``is_valid_safetensors_file`` で
+    コンテナ構造を検査し、壊れたエントリを捨てる（``ModelScanner.adjust_cached_entry``）。
+    中身がただのテキストだと検査に落ちてキャッシュへ戻らないので、
+    ヘッダ長・ヘッダJSON・ペイロードの体裁だけ整えたファイルを置く。
+    """
+    payload = b"\x00" * 8
+    header = json.dumps(
+        {tensor_name: {"dtype": "F32", "shape": [2], "data_offsets": [0, len(payload)]}}
+    ).encode("utf-8")
+    path.write_bytes(struct.pack("<Q", len(header)) + header + payload)
+
+
 @pytest.fixture(autouse=True)
 def reset_model_scanner_singletons():
     ModelScanner._instances.clear()
@@ -42,8 +59,8 @@ async def test_persisted_cache_restores_model_type(tmp_path: Path, monkeypatch):
 
     checkpoint_file = checkpoints_root / "alpha.safetensors"
     unet_file = unet_root / "beta.safetensors"
-    checkpoint_file.write_text("alpha", encoding="utf-8")
-    unet_file.write_text("beta", encoding="utf-8")
+    _write_minimal_safetensors(checkpoint_file, "alpha")
+    _write_minimal_safetensors(unet_file, "beta")
 
     normalized_checkpoint_root = _normalize(checkpoints_root)
     normalized_unet_root = _normalize(unet_root)

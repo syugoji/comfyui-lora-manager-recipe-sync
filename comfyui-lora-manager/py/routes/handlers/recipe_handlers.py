@@ -94,6 +94,7 @@ class RecipeHandlerSet:
     analysis: "RecipeAnalysisHandler"
     sharing: "RecipeSharingHandler"
     batch_import: "BatchImportHandler"
+    raindrop_sync: "RaindropSyncHandler"
 
     def to_route_mapping(
         self,
@@ -146,6 +147,9 @@ class RecipeHandlerSet:
             "import_from_url": self.management.import_from_url,
             "create_from_example": self.management.create_from_example,
             "reimport_recipe": self.management.reimport_recipe,
+            "start_raindrop_sync": self.raindrop_sync.start_raindrop_sync,
+            "get_raindrop_sync_progress": self.raindrop_sync.get_raindrop_sync_progress,
+            "cancel_raindrop_sync": self.raindrop_sync.cancel_raindrop_sync,
         }
 
 
@@ -3220,5 +3224,80 @@ class BatchImportHandler:
             )
         except Exception as exc:
             self._logger.error("Error browsing directory: %s", exc, exc_info=True)
+            return web.json_response({"success": False, "error": str(exc)}, status=500)
+
+
+class RaindropSyncHandler:
+    """Raindrop → レシピ同期の起動・進捗・中断を仲介する。
+
+    同期の実体は別プロセス（配布ツリーの ``civitai-recipe-sync/``・MIT）。
+    ここは起動と進捗の受け渡しだけを行い、同期ロジックは持たない。
+    詳細は ``py/services/raindrop_sync_service.py`` の冒頭を参照。
+    """
+
+    def __init__(
+        self,
+        *,
+        recipe_scanner_getter: RecipeScannerGetter,
+        ensure_dependencies_ready: EnsureDependenciesCallable,
+        logger: Logger,
+        sync_service_getter: Optional[Callable[[], Any]] = None,
+    ) -> None:
+        self._recipe_scanner_getter = recipe_scanner_getter
+        self._ensure_dependencies_ready = ensure_dependencies_ready
+        self._logger = logger
+        self._sync_service_getter = sync_service_getter
+
+    def _get_service(self):
+        if self._sync_service_getter is not None:
+            return self._sync_service_getter()
+
+        from ...services.raindrop_sync_service import get_raindrop_sync_service
+
+        def recipes_dir_getter() -> str:
+            scanner = self._recipe_scanner_getter()
+            return getattr(scanner, "recipes_dir", "") or ""
+
+        return get_raindrop_sync_service(recipes_dir_getter=recipes_dir_getter)
+
+    async def start_raindrop_sync(self, request: web.Request) -> web.Response:
+        from ...services.raindrop_sync_service import (
+            RaindropSyncBusyError,
+            RaindropSyncConfigError,
+            RaindropSyncError,
+        )
+
+        try:
+            await self._ensure_dependencies_ready()
+            service = self._get_service()
+            # 子プロセスは HTTP でこのサーバへ戻ってくる。ComfyUI が既定の
+            # 8188 以外で動いている場合に備え、リクエストの出所を渡す。
+            progress = await service.start(base_url_hint=str(request.url.origin()))
+            return web.json_response({"success": True, "progress": progress})
+        except RaindropSyncBusyError as exc:
+            return web.json_response({"success": False, "error": str(exc)}, status=409)
+        except RaindropSyncConfigError as exc:
+            return web.json_response({"success": False, "error": str(exc)}, status=400)
+        except RaindropSyncError as exc:
+            return web.json_response({"success": False, "error": str(exc)}, status=500)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self._logger.error("Error starting raindrop sync: %s", exc, exc_info=True)
+            return web.json_response({"success": False, "error": str(exc)}, status=500)
+
+    async def get_raindrop_sync_progress(self, request: web.Request) -> web.Response:
+        try:
+            service = self._get_service()
+            return web.json_response({"success": True, "progress": service.get_progress()})
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self._logger.error("Error reading raindrop sync progress: %s", exc, exc_info=True)
+            return web.json_response({"success": False, "error": str(exc)}, status=500)
+
+    async def cancel_raindrop_sync(self, request: web.Request) -> web.Response:
+        try:
+            service = self._get_service()
+            progress = await service.cancel()
+            return web.json_response({"success": True, "progress": progress})
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self._logger.error("Error cancelling raindrop sync: %s", exc, exc_info=True)
             return web.json_response({"success": False, "error": str(exc)}, status=500)
 

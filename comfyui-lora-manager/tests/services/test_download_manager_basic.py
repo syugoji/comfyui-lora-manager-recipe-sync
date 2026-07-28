@@ -1,6 +1,7 @@
 """Core functionality tests for DownloadManager."""
 
 import asyncio
+import hashlib
 import os
 import zipfile
 from pathlib import Path
@@ -102,6 +103,10 @@ class DummyScanner:
         self.exists = exists
         self.calls = []
         self.hashes = set()
+        # DownloadManager はハッシュの有無だけでなく実ファイルのバイト列も照合する
+        # （sidecar の値が実体とずれていた場合に再ダウンロードへ倒すため）。
+        # そのため hash -> path の対応も返せる必要がある。
+        self.paths = {}
 
     async def check_model_version_exists(self, version_id):
         self.calls.append(version_id)
@@ -109,6 +114,9 @@ class DummyScanner:
 
     def has_hash(self, sha256):
         return sha256.lower() in self.hashes
+
+    def get_path_by_hash(self, sha256):
+        return self.paths.get(sha256.lower())
 
 
 @pytest.fixture
@@ -1114,10 +1122,16 @@ async def test_download_is_idempotent_when_version_exists(
 
 @pytest.mark.asyncio
 async def test_download_is_idempotent_when_hash_exists_without_version_metadata(
-    monkeypatch, scanners, metadata_provider
+    monkeypatch, scanners, metadata_provider, tmp_path
 ):
     """A local hash match must prevent duplicate downloads with blank sidecars."""
-    scanners.lora.hashes.add("acd58eb244848f0ffddc647435ddd983eec5ceeb10c70baa6ca333a089715b69")
+    # 実ファイルのバイト列と突き合わせるので、ハッシュは実測値を使う
+    # （固定値を書くと照合に必ず落ちて再ダウンロード側へ倒れる）。
+    existing_file = tmp_path / "firekeeper2.pt"
+    existing_file.write_bytes(b"firekeeper2-weights")
+    local_sha256 = hashlib.sha256(existing_file.read_bytes()).hexdigest()
+    scanners.lora.hashes.add(local_sha256)
+    scanners.lora.paths[local_sha256] = str(existing_file)
     metadata_provider.get_model_version = AsyncMock(
         return_value={
             "id": 13304,
@@ -1129,9 +1143,7 @@ async def test_download_is_idempotent_when_hash_exists_without_version_metadata(
                     "primary": True,
                     "downloadUrl": "https://example.invalid/firekeeper2.pt",
                     "name": "firekeeper2.pt",
-                    "hashes": {
-                        "SHA256": "ACD58EB244848F0FFDDC647435DDD983EEC5CEEB10C70BAA6CA333A089715B69"
-                    },
+                    "hashes": {"SHA256": local_sha256.upper()},
                 }
             ],
         }

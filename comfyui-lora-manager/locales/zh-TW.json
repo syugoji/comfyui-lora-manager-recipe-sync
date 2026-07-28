@@ -656,6 +656,21 @@
             "proxyPassword": "密碼（選填）",
             "proxyPasswordPlaceholder": "password",
             "proxyPasswordHelp": "代理驗證所需的密碼（如有需要）"
+        },
+        "raindropSync": {
+            "title": "Raindrop 同步",
+            "tokenLabel": "Raindrop 權杖",
+            "tokenHelp": "在 Raindrop.io 設定中產生的測試權杖。僅保存在伺服器端，不會回傳給瀏覽器。",
+            "tokenPlaceholder": "輸入 Raindrop 測試權杖",
+            "tokenConfigured": "已設定",
+            "tokenNotConfigured": "未設定",
+            "tokenSet": "設定",
+            "collectionLabel": "收藏夾 ID",
+            "collectionHelp": "存放 CivitAI 圖片書籤的 Raindrop 收藏夾數字 ID。",
+            "collectionPlaceholder": "例如 12345678",
+            "scriptPathLabel": "同步指令碼路徑",
+            "scriptPathHelp": "civitai_image_download.py 的路徑。留空則使用同層的 civitai-recipe-sync 資料夾。",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -753,7 +768,8 @@
                 "completed": "完成：已移動 {success}，已略過 {skipped}，失敗 {failures}",
                 "complete": "自動整理完成",
                 "error": "錯誤：{error}"
-            }
+            },
+            "downloadMissingResources": "下載缺少的檢查點、LoRA 與嵌入"
         },
         "contextMenu": {
             "refreshMetadata": "刷新 Civitai 資料",
@@ -842,7 +858,8 @@
                     "selectImageFile": "請選擇圖片檔案",
                     "enterUrlOrPath": "請輸入網址或檔案路徑",
                     "selectLoraRoot": "請選擇 LoRA 根目錄"
-                }
+                },
+                "downloadingResources": "正在下載配方素材..."
             },
             "sort": {
                 "title": "配方排序...",
@@ -854,7 +871,10 @@
                 "dateAsc": "最舊",
                 "lorasCount": "LoRA 數量",
                 "lorasCountDesc": "最多",
-                "lorasCountAsc": "最少"
+                "lorasCountAsc": "最少",
+                "checkpoint": "檢查點",
+                "checkpointAsc": "模型名稱（A 到 Z）",
+                "checkpointDesc": "模型名稱（Z 到 A）"
             },
             "refresh": {
                 "title": "重新整理配方列表",
@@ -865,6 +885,10 @@
             "favorites": {
                 "title": "僅顯示收藏",
                 "action": "收藏"
+            },
+            "playlist": {
+                "action": "執行清單",
+                "title": "執行清單（依序將配方送入 ComfyUI 佇列）"
             }
         },
         "duplicates": {
@@ -905,6 +929,11 @@
                 "noSourceUrl": "配方沒有來源URL，無法重新匯入",
                 "failed": "重新匯入配方失敗：{message}",
                 "missingId": "無法重新匯入配方：缺少配方ID"
+            },
+            "addToPlaylist": "加入執行清單",
+            "playlist": {
+                "addFailed": "無法將配方加入執行清單",
+                "missingId": "無法加入執行清單：缺少配方 ID"
             }
         },
         "batchImport": {
@@ -964,6 +993,34 @@
                 "enterDirectory": "請輸入目錄路徑",
                 "startFailed": "啟動匯入失敗：{message}"
             }
+        },
+        "raindropSync": {
+            "title": "從 Raindrop 同步配方",
+            "action": "Raindrop 同步",
+            "description": "讀取 Raindrop 中的 CivitAI 圖片書籤並儲存為配方。同步程序在獨立行程中執行。",
+            "tokenLabel": "權杖",
+            "collectionLabel": "收藏夾",
+            "configured": "已設定",
+            "notConfigured": "未設定",
+            "needsSettings": "請先在設定中填入 Raindrop 權杖與收藏夾 ID。",
+            "start": "開始同步",
+            "running": "同步中...",
+            "completed": "同步完成",
+            "cancelled": "同步已取消",
+            "failedTitle": "同步失敗",
+            "total": "目標",
+            "success": "已儲存",
+            "failed": "失敗",
+            "alreadySynced": "已同步",
+            "current": "目前",
+            "viewLog": "檢視記錄",
+            "cancel": "停止",
+            "failedIds": "失敗的圖片 ID",
+            "excludedSummary": "{bookmarks} 個書籤中有 {gap} 個不在範圍內",
+            "excludedNotCivitaiImage": "不是 CivitAI 圖片 URL",
+            "excludedDuplicate": "重複的圖片 ID",
+            "excludedAlreadySynced": "已同步",
+            "excludedNoLink": "連結為空"
         }
     },
     "checkpoints": {
@@ -1513,6 +1570,12 @@
             "downloadCsv": "下載 CSV",
             "columnModelName": "模型名稱",
             "columnError": "錯誤"
+        },
+        "bulkDownloadMissingResources": {
+            "downloadButton": "下載 {count} 個素材",
+            "message": "在所選配方中共 {totalCount} 個素材，找到 {uniqueCount} 個不重複的缺少素材。",
+            "previewTitle": "待下載的素材：",
+            "title": "下載缺少的配方素材"
         }
     },
     "modelTags": {
@@ -1851,7 +1914,21 @@
             "reimportBulkComplete": "重新匯入完成：{completed} 個已匯入，{failed} 個失敗（共 {total} 個）",
             "reimportBulkFailed": "重新匯入某些配方失敗",
             "noMissingLorasInSelection": "在選取的食譜中未找到缺失的 LoRAs",
-            "noLoraRootConfigured": "未配置 LoRA 根目錄。請在設定中設定預設的 LoRA 根目錄。"
+            "noLoraRootConfigured": "未配置 LoRA 根目錄。請在設定中設定預設的 LoRA 根目錄。",
+            "raindropSyncStartFailed": "無法啟動 Raindrop 同步：{message}",
+            "raindropSyncCancelFailed": "無法停止 Raindrop 同步：{message}",
+            "noMissingResourcesInSelection": "所選配方中沒有缺少的檢查點、LoRA 或嵌入",
+            "playlistAdded": "已將 {added} 個配方加入執行清單（略過 {skipped} 個）",
+            "playlistQueued": "執行清單：已排入 {queued} 個配方（略過 {skipped} 個）",
+            "workflowReplayFailed": "無法重建 ComfyUI 工作流程：{message}",
+            "workflowReplayed": "已在 ComfyUI 中載入 {source}。{warning}",
+            "allResourcesDownloadSuccessful": "已下載 {count} 個配方素材。",
+            "noModelRootConfigured": "尚未設定 {type} 的根目錄。",
+            "notesUpdated": "備註已儲存",
+            "referenceUnavailable": "無法產生參考資訊",
+            "resourcesDownloadFailed": "配方素材下載失敗：{message}",
+            "resourcesDownloadPartialSuccess": "已下載 {total} 個配方素材中的 {completed} 個。",
+            "revisionAdopted": "已採用 AI 修訂版。原配方未變更。"
         },
         "models": {
             "noModelsSelected": "未選擇模型",

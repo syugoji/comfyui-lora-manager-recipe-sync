@@ -656,6 +656,21 @@
             "proxyPassword": "パスワード（任意）",
             "proxyPasswordPlaceholder": "パスワード",
             "proxyPasswordHelp": "プロキシ認証用のパスワード（必要な場合）"
+        },
+        "raindropSync": {
+            "title": "Raindrop 同期",
+            "tokenLabel": "Raindrop トークン",
+            "tokenHelp": "Raindrop.io の設定で発行したテストトークン。サーバ側にだけ保存し、ブラウザへは返しません。",
+            "tokenPlaceholder": "Raindrop のテストトークンを入力",
+            "tokenConfigured": "設定済み",
+            "tokenNotConfigured": "未設定",
+            "tokenSet": "設定する",
+            "collectionLabel": "コレクションID",
+            "collectionHelp": "Civitai 画像のブックマークを入れている Raindrop コレクションの数値ID。",
+            "collectionPlaceholder": "例: 12345678",
+            "scriptPathLabel": "同期スクリプトのパス",
+            "scriptPathHelp": "civitai_image_download.py の場所。空欄なら隣の civitai-recipe-sync フォルダを使います。",
+            "scriptPathPlaceholder": ".../civitai-recipe-sync/civitai_image_download.py"
         }
     },
     "loras": {
@@ -843,7 +858,8 @@
                     "selectImageFile": "画像ファイルを選択してください",
                     "enterUrlOrPath": "URLまたはファイルパスを入力してください",
                     "selectLoraRoot": "LoRAルートディレクトリを選択してください"
-                }
+                },
+                "downloadingResources": "レシピ素材をダウンロード中..."
             },
             "sort": {
                 "title": "レシピの並び替え...",
@@ -977,6 +993,34 @@
                 "enterDirectory": "Please enter a directory path",
                 "startFailed": "Failed to start import: {message}"
             }
+        },
+        "raindropSync": {
+            "title": "Raindrop からレシピを同期",
+            "action": "Raindrop 同期",
+            "description": "Raindrop に溜めた Civitai 画像のブックマークを読み、レシピとして保存します。同期の実体は別プロセスで動きます。",
+            "tokenLabel": "トークン",
+            "collectionLabel": "コレクション",
+            "configured": "設定済み",
+            "notConfigured": "未設定",
+            "needsSettings": "先に設定画面で Raindrop トークンとコレクションIDを入力してください。",
+            "start": "同期を開始",
+            "running": "同期中...",
+            "completed": "同期が終わりました",
+            "cancelled": "同期を中断しました",
+            "failedTitle": "同期に失敗しました",
+            "total": "対象",
+            "success": "保存",
+            "failed": "失敗",
+            "alreadySynced": "同期済み",
+            "current": "処理中",
+            "viewLog": "ログを見る",
+            "cancel": "中断",
+            "failedIds": "失敗した画像ID",
+            "excludedSummary": "ブックマーク {bookmarks} 件のうち {gap} 件は対象外",
+            "excludedNotCivitaiImage": "Civitai画像URLでない",
+            "excludedDuplicate": "同じ画像IDが重複",
+            "excludedAlreadySynced": "同期済み",
+            "excludedNoLink": "リンクが空"
         }
     },
     "checkpoints": {
@@ -1875,7 +1919,16 @@
             "reimportBulkFailed": "一部のレシピの再インポートに失敗しました",
             "noMissingLorasInSelection": "選択したレシピに不足している LoRA が見つかりませんでした",
             "noMissingResourcesInSelection": "選択したレシピに不足しているチェックポイント・LoRA・Embeddingが見つかりませんでした",
-            "noLoraRootConfigured": "LoRA ルートディレクトリが設定されていません。設定でデフォルトの LoRA ルートを設定してください。"
+            "noLoraRootConfigured": "LoRA ルートディレクトリが設定されていません。設定でデフォルトの LoRA ルートを設定してください。",
+            "raindropSyncStartFailed": "Raindrop 同期を開始できませんでした: {message}",
+            "raindropSyncCancelFailed": "Raindrop 同期を中断できませんでした: {message}",
+            "allResourcesDownloadSuccessful": "レシピ素材を {count} 個ダウンロードしました。",
+            "noModelRootConfigured": "{type} のルートディレクトリが設定されていません。",
+            "notesUpdated": "メモを保存しました",
+            "referenceUnavailable": "参考情報を取得できませんでした",
+            "resourcesDownloadFailed": "レシピ素材のダウンロードに失敗しました: {message}",
+            "resourcesDownloadPartialSuccess": "レシピ素材 {total} 個のうち {completed} 個をダウンロードしました。",
+            "revisionAdopted": "AI補完・改変版を採用しました。元レシピは変更していません。"
         },
         "models": {
             "noModelsSelected": "モデルが選択されていません",
